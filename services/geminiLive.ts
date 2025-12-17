@@ -77,9 +77,18 @@ export class GeminiLiveService {
       }
     };
 
-    // Auto-restart if it disconnects
+    // FORCE RESTART: Never let the ears close
     this.recognition.onend = () => {
-        try { this.recognition.start(); } catch (e) {}
+        console.log("Sarah's ears closed. Re-opening...");
+        // Wait 100ms then restart to prevent CPU overlap
+        setTimeout(() => {
+            try { 
+                this.recognition.start(); 
+                console.log("Sarah is listening again.");
+            } catch (e) {
+                console.log("Restart error (ignored):", e);
+            }
+        }, 100);
     };
 
     this.recognition.start();
