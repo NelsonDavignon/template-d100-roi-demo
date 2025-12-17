@@ -1,0 +1,7 @@
+{
+  "name": "Kerr Design Build - AI Proposal",
+  "description": "Interactive pitch deck featuring a live AI voice agent demo and ROI calculator for Kerr Design Build.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
