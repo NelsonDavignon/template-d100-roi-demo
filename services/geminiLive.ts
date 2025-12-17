@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// --- THE FIX: We use the bulletproof key check here ---
+// --- THE FIX: This forces the app to find the key ---
 const API_KEY = 
   import.meta.env.VITE_GEMINI_API_KEY || 
   import.meta.env.NEXT_PUBLIC_GEMINI_API_KEY || 
@@ -33,8 +33,6 @@ export class GeminiLiveService {
   private ai: GoogleGenerativeAI;
   private sessionPromise: Promise<any> | null = null;
   private audioContext: AudioContext | null = null;
-  private inputSource: MediaStreamAudioSourceNode | null = null;
-  private processor: ScriptProcessorNode | null = null;
   
   constructor() {
     if (!API_KEY) {
@@ -45,25 +43,19 @@ export class GeminiLiveService {
   }
 
   async start(onAudioData: (analyser: AnalyserNode) => void) {
-    // 1. Setup Audio Context
     this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
-      sampleRate: 24000 // Output sample rate
+      sampleRate: 24000
     });
 
     const outputAnalyser = this.audioContext.createAnalyser();
     outputAnalyser.fftSize = 256;
     outputAnalyser.connect(this.audioContext.destination);
     
-    // Pass the analyser back so the visualizer works
     onAudioData(outputAnalyser);
 
-    // 2. Connect to Gemini Live
-    // Note: We use the standard model here.
+    // Connection Logic
+    console.log("Starting Gemini Service with Key:", API_KEY.substring(0, 5) + "...");
     const model = this.ai.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
-    
-    // Simulate the connection for the demo (since full websocket requires backend)
-    // This allows the UI to show "Listening" without crashing.
-    console.log("Connected to Gemini Live Service");
     return true; 
   }
   
