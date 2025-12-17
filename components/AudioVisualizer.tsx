@@ -17,64 +17,65 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({ isActive, isSpeaking,
     if (!ctx) return;
 
     let animationId: number;
+    // Create a buffer for frequency data
     const bufferLength = analyser ? analyser.frequencyBinCount : 0;
     const dataArray = analyser ? new Uint8Array(bufferLength) : new Uint8Array(0);
 
     const draw = () => {
       animationId = requestAnimationFrame(draw);
 
+      // 1. Clear the canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const centerX = canvas.width / 2;
       const centerY = canvas.height / 2;
 
+      // 2. Get Audio Data (if mic is on)
       if (isSpeaking && analyser) {
         analyser.getByteFrequencyData(dataArray);
-        
-        // Draw circular waveform
-        ctx.beginPath();
-        const radius = 50;
-        
-        for (let i = 0; i < bufferLength; i++) {
-          const barHeight = dataArray[i] / 2;
-          const rads = (Math.PI * 2) / bufferLength;
-          const x = centerX + Math.cos(rads * i) * (radius + barHeight);
-          const y = centerY + Math.sin(rads * i) * (radius + barHeight);
-          
-          if (i === 0) {
-            ctx.moveTo(x, y);
-          } else {
-            ctx.lineTo(x, y);
-          }
-        }
-        ctx.closePath();
-        ctx.strokeStyle = '#D4AF37'; // Gold
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        // Inner glow
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, radius - 5, 0, 2 * Math.PI);
-        ctx.fillStyle = 'rgba(212, 175, 55, 0.2)';
-        ctx.fill();
-
-      } else {
-        // Resting state - breathing circle
-        const time = Date.now() / 1000;
-        const radius = 50 + Math.sin(time * 2) * 5;
-        
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
-        ctx.strokeStyle = '#333';
-        ctx.lineWidth = 2;
-        ctx.stroke();
       }
+
+      // 3. Draw the Smooth Circle
+      ctx.beginPath();
+      // Base radius of the circle
+      const radius = 50; 
+
+      // We draw a full circle (0 to 2*PI)
+      for (let i = 0; i <= 360; i++) {
+        // Map degree to radian
+        const radian = (i * Math.PI) / 180;
+        
+        // Map degree to audio frequency index (approximate)
+        const dataIndex = Math.floor((i / 360) * (bufferLength / 2));
+        
+        // Get volume for this frequency (0-255)
+        const value = dataArray[dataIndex] || 0;
+        
+        // "Damping": Divide value by 4 so it pulses gently, not aggressively
+        const offset = value / 4; 
+
+        // Calculate (x,y)
+        const x = centerX + (radius + offset) * Math.cos(radian);
+        const y = centerY + (radius + offset) * Math.sin(radian);
+
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+
+      ctx.closePath();
+      
+      // 4. Style: Gold Outline, Glow effect
+      ctx.strokeStyle = '#D4AF37'; // Brand Gold
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // Add a soft glow inside
+      ctx.fillStyle = 'rgba(212, 175, 55, 0.1)';
+      ctx.fill();
     };
 
     draw();
 
-    return () => {
-      cancelAnimationFrame(animationId);
-    };
+    return () => cancelAnimationFrame(animationId);
   }, [isActive, isSpeaking, analyser]);
 
   return (
@@ -82,7 +83,7 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({ isActive, isSpeaking,
       ref={canvasRef} 
       width={300} 
       height={300} 
-      className="w-full h-64 mx-auto"
+      className="w-full h-full"
     />
   );
 };
