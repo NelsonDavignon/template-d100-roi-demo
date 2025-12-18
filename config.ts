@@ -26,9 +26,9 @@ export const NICHES = {
     firstMessage: "Hello! This is Bright Smile Dental. Are you calling for a routine check-up or do you have a toothache?"
   },
   coach: {
-    title: "Growth Strategy Setter",
+    title: "NDO Ventures",
     subtitle: "Vets prospects for motivation and funds before booking the expert.",
-    agentName: "Alex",
+    agentName: "Nelson",
     primaryColor: "text-green-500", 
     // SPECIFIC INSTRUCTIONS FOR COACHING
     systemPrompt: `You are Alex, a high-performance strategy setter. ${SETTER_INSTRUCTIONS} Ask them what their biggest business blocker is right now.`,
