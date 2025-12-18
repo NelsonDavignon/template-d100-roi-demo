@@ -1,6 +1,6 @@
-// SECURE MODE: Reads the key from Vercel. No hardcoded passwords.
+// SECURE MODE: Reads key from Vercel. 
+// UPDATED: Better Voice, Smarter Listening, Full Persona.
 
-// This line pulls the key from the "Vercel Vault" automatically
 const API_KEY = 
   import.meta.env.VITE_GEMINI_API_KEY || 
   import.meta.env.NEXT_PUBLIC_GEMINI_API_KEY || 
@@ -13,28 +13,23 @@ export class GeminiLiveService {
 
   constructor() {
     this.synth = window.speechSynthesis;
-    // Safety Check
-    if (!API_KEY || API_KEY.length < 10) {
-       console.error("CRITICAL: API Key is missing from Vercel Environment Variables.");
-       // We don't alert immediately to avoid annoying popups if it's just loading
+    // Pre-load voices to make sure we find the good ones
+    if (typeof window !== 'undefined') {
+        window.speechSynthesis.getVoices(); 
     }
   }
 
-  // --- BRAIN FINDER ---
+  // --- BRAIN FINDER (Keep this, it works) ---
   async findWorkingModel() {
     try {
         console.log("Connecting to Google...");
-        // This request uses the hidden key
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`);
-        
         if (!response.ok) throw new Error("Key Rejected or Invalid");
-
         const data = await response.json();
         const validModel = data.models?.find((m: any) => 
             m.name.includes("gemini") && 
             m.supportedGenerationMethods.includes("generateContent")
         );
-
         if (validModel) {
             console.log("Connected to:", validModel.name);
             this.modelUrl = `https://generativelanguage.googleapis.com/v1beta/${validModel.name}:generateContent?key=${API_KEY}`;
@@ -43,7 +38,6 @@ export class GeminiLiveService {
         throw new Error("No brains found.");
     } catch (e: any) {
         console.error(e);
-        alert("SECURITY ERROR: Could not connect. Check Vercel Environment Variables.");
         return false;
     }
   }
@@ -77,34 +71,41 @@ export class GeminiLiveService {
       const text = event.results[last][0].transcript;
       console.log("Sarah Heard:", text);
 
-      if (!text) return;
+      // --- FIX 1: IGNORE SILENCE/MUMBLES ---
+      // If the user didn't say anything meaningful (less than 2 chars), ignore it.
+      // This stops the "I didn't catch that" loop.
+      if (!text || text.trim().length < 2) return;
 
       try {
         const responseText = await this.askGoogleDirectly(text);
-        this.speak(responseText);
+        if (responseText) this.speak(responseText);
       } catch (error: any) {
         console.error("API Error:", error);
       }
     };
 
+    // Keep her alive (Auto-restart)
     this.recognition.onend = () => {
         setTimeout(() => { try { this.recognition.start(); } catch (e) {} }, 100);
     };
 
     this.recognition.start();
-    this.speak("System Secure. Ready.");
+    this.speak("Hi! I'm Sarah. How can I help with your home project?");
     return true; 
   }
 
   async askGoogleDirectly(userText: string) {
     if (!this.modelUrl) return "I am offline.";
 
+    // --- FIX 2: RESTORED PERSONA ---
+    const systemPrompt = "You are Sarah, a warm, professional Home Renovation Coordinator for 'Kerr Design Build'. Your goal is to book an appointment. Keep answers short (1-2 sentences max), friendly, and human-like. Do not use asterisks or formatting.";
+
     const response = await fetch(this.modelUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ 
-          parts: [{ text: "You are Sarah. Be brief. User says: " + userText }] 
+          parts: [{ text: systemPrompt + " User says: " + userText }] 
         }]
       })
     });
@@ -113,15 +114,29 @@ export class GeminiLiveService {
     if (data.candidates && data.candidates[0]) {
         return data.candidates[0].content.parts[0].text;
     }
-    return "I didn't catch that.";
+    return ""; // Return empty string instead of error text if confused
   }
   
   speak(text: string) {
     this.synth.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     const voices = this.synth.getVoices();
-    const bestVoice = voices.find(v => v.name.includes("Google US English")) || voices.find(v => v.name.includes("Female"));
-    if (bestVoice) utterance.voice = bestVoice;
+    
+    // --- FIX 3: BETTER VOICE SELECTION ---
+    // 1. Try to find a "Natural" voice (High Quality)
+    // 2. Fallback to Google US English
+    // 3. Fallback to any Female voice
+    const bestVoice = 
+        voices.find(v => v.name.includes("Natural") && v.name.includes("English")) || 
+        voices.find(v => v.name.includes("Google US English")) || 
+        voices.find(v => v.name.includes("Female"));
+
+    if (bestVoice) {
+        utterance.voice = bestVoice;
+        // Slow her down slightly to sound more thoughtful
+        utterance.rate = 0.9; 
+    }
+    
     this.synth.speak(utterance);
   }
 
