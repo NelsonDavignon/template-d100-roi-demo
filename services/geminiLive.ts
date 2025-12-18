@@ -20,24 +20,25 @@ export class GeminiLiveService {
     this.ai = new GoogleGenerativeAI(API_KEY);
     this.synth = window.speechSynthesis;
     
-    // Setup the Brain (Gemini)
+    // Setup Brain
     const model = this.ai.getGenerativeModel({ model: "gemini-1.5-flash" });
     this.chat = model.startChat({
       history: [
-        {
-          role: "user",
-          parts: [{ text: "You are Sarah, a warm, professional home renovation coordinator. Keep answers extremely short (1 sentence). Be friendly and enthusiastic." }],
-        },
-        {
-          role: "model",
-          parts: [{ text: "Hi! I'm Sarah. I'm excited to hear about your project!" }],
-        },
+        { role: "user", parts: [{ text: "You are Sarah. Reply in 1 short sentence." }] },
+        { role: "model", parts: [{ text: "Hi! I'm Sarah." }] },
       ],
     });
   }
 
   async start(onAudioData: (analyser: AnalyserNode) => void) {
-    // 1. Setup Audio Visualizer (Connects to YOUR Mic)
+    // 1. Check Browser Support
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("ERROR: This browser does not support speech. Please use Google Chrome.");
+      return;
+    }
+
+    // 2. Setup Visualizer (Mic Input)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -45,78 +46,68 @@ export class GeminiLiveService {
       this.analyser.fftSize = 256;
       this.source = this.audioContext.createMediaStreamSource(stream);
       this.source.connect(this.analyser);
-      onAudioData(this.analyser); // Connects to the circle UI
+      onAudioData(this.analyser);
     } catch (e) {
-      console.error("Mic Access Denied:", e);
-    }
-
-    // 2. Setup Speech Recognition (The Ears)
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("Please use Google Chrome for this demo.");
+      alert("Microphone Error: Access Denied. Please allow mic permissions.");
+      console.error(e);
       return;
     }
 
+    // 3. Setup Ears (Speech Recognition)
     this.recognition = new SpeechRecognition();
-    this.recognition.continuous = true; // KEEP LISTENING
+    this.recognition.continuous = true;
     this.recognition.interimResults = false;
-    this.recognition.lang = 'en-US';
+    this.recognition.lang = 'en-US'; // Force English
+
+    // --- CRITICAL ERROR CATCHER ---
+    this.recognition.onerror = (event: any) => {
+      console.error("Speech Recognition Error:", event.error);
+      
+      // THIS WILL TELL US THE PROBLEM
+      if (event.error === 'not-allowed') alert("ERROR: Mic blocked. Check Chrome settings.");
+      else if (event.error === 'no-speech') console.log("No speech detected (Normal silence)");
+      else if (event.error === 'network') alert("ERROR: Network issue blocked speech.");
+      else alert("SPEECH ERROR: " + event.error);
+    };
+
+    this.recognition.onstart = () => {
+      console.log("Sarah is listening...");
+    };
 
     this.recognition.onresult = async (event: any) => {
       const last = event.results.length - 1;
       const text = event.results[last][0].transcript;
-      console.log("Heard:", text);
+      console.log("HEARD:", text);
 
-      // Send to Gemini
+      // Simple visual feedback
+      // alert("I heard: " + text); // Uncomment if you doubt she hears you
+
       try {
         const result = await this.chat.sendMessage(text);
         const response = result.response.text();
         this.speak(response);
       } catch (error) {
-        console.error("Gemini Brain Error:", error);
+        alert("Brain Error: API Key might be invalid.");
       }
     };
 
-    // FORCE RESTART: Never let the ears close
+    // Auto-restart logic
     this.recognition.onend = () => {
-        console.log("Sarah's ears closed. Re-opening...");
-        // Wait 100ms then restart to prevent CPU overlap
-        setTimeout(() => {
-            try { 
-                this.recognition.start(); 
-                console.log("Sarah is listening again.");
-            } catch (e) {
-                console.log("Restart error (ignored):", e);
-            }
-        }, 100);
+       setTimeout(() => { try { this.recognition.start(); } catch(e){} }, 100);
     };
 
     this.recognition.start();
-    
-    // 3. Speak the Greeting
-    this.speak("Hi! This is Sarah. How can I help with your project?");
+    this.speak("Hi! Sarah is online.");
     return true; 
   }
   
   speak(text: string) {
-    this.synth.cancel(); // Stop talking if already talking
-    
+    this.synth.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1.0; 
-    utterance.pitch = 1.0;
-
-    // --- VOICE HUNTER: Finds the best "Human" voice ---
+    // Try to find a nice voice
     const voices = this.synth.getVoices();
-    // Prioritize "Google US English" (Very human) or "Samantha" (Mac)
-    const bestVoice = voices.find(v => v.name.includes("Google US English")) || 
-                      voices.find(v => v.name.includes("Samantha")) ||
-                      voices.find(v => v.name.includes("Female"));
-    
-    if (bestVoice) {
-        utterance.voice = bestVoice;
-        console.log("Using Voice:", bestVoice.name);
-    }
-    
+    const goodVoice = voices.find(v => v.name.includes("Google US English"));
+    if (goodVoice) utterance.voice = goodVoice;
     this.synth.speak(utterance);
   }
 
@@ -124,6 +115,5 @@ export class GeminiLiveService {
     if (this.recognition) this.recognition.stop();
     if (this.synth) this.synth.cancel();
     if (this.audioContext) this.audioContext.close();
-    if (this.source) this.source.disconnect();
   }
 }
