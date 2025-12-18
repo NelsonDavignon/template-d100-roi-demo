@@ -2,7 +2,7 @@
 
 // --- CHANGE THIS TO SWITCH NICHES ---
 // Options: "renovation" | "dentist" | "coach" | "roofing" | "plumbing" | "hvac"
-export const CURRENT_NICHE = "dentist"; 
+export const CURRENT_NICHE = "coach"; 
 
 const SETTER_INSTRUCTIONS = "You are a Lead Setter. Your goal is to qualify the lead and book an appointment. 1. Keep answers short (1 sentence). 2. Take charge of the conversation. 3. Ask ONE question at a time to qualify (ask about their project details, their timeline, or their budget). 4. If they seem serious/qualified, ask to book the appointment immediately. 5. ALWAYS end your response with a question. 6. ALWAYS ask for best email, best phone number before booking the appointment";
 
@@ -26,9 +26,9 @@ export const NICHES = {
     firstMessage: "Hello! This is Bright Smile Dental. Are you calling for a routine check-up or do you have a toothache?"
   },
   coach: {
-    title: "Growth Strategy Setter",
+    title: "NDO Ventures",
     subtitle: "Vets prospects for motivation and funds before booking the expert.",
-    agentName: "Alex",
+    agentName: "Nelson",
     primaryColor: "text-green-500", 
     // SPECIFIC INSTRUCTIONS FOR COACHING
     systemPrompt: `You are Alex, a high-performance strategy setter. ${SETTER_INSTRUCTIONS} Ask them what their biggest business blocker is right now.`,
