@@ -2,12 +2,12 @@ import { ClientConfig } from './types';
 
 // CONFIGURATION: Easily swappable for different clients
 export const CLIENT_CONFIG: ClientConfig = {
-  name: "Kerr Design Build",
-  website: "https://kerrdesign.build/",
-  industry: "Home Renovation & Custom Builds",
-  themeColor: "#D4AF37", // Gold
+  name: "NDO Ventures",
+  website: "https://ndoventures.com/",
+  industry: "Automation Agency",
+  themeColor: "#7dd856", // Green
   metrics: {
-    avgJobValue: 120000, // High ticket renovation average
+    avgJobValue: 7000, // High ticket renovation average
     defaultLeads: 40,
     defaultMissedRate: 0.30, // 30% industry avg
     defaultCloseRate: 0.15, // 15%
