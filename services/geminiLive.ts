@@ -1,12 +1,13 @@
-// UNIVERSAL MODE: Using the stable 'v1' endpoint and 'gemini-pro' model.
+// MASTER KEY MODE: Auto-detects the correct model for your account.
 
-// PASTE YOUR NEW TIER 1 KEY HERE
+// PASTE YOUR TIER 1 KEY HERE
 const API_KEY = "AIzaSyBDZDS3qHCuJ_7PF8Kr9ro1EY0ZAuayekg";
 
 export class GeminiLiveService {
   private synth: SpeechSynthesis;
   private recognition: any;
-  
+  private modelUrl: string = ""; // We will find this automatically
+
   constructor() {
     this.synth = window.speechSynthesis;
     if (API_KEY.includes("PASTE_YOUR")) {
@@ -14,8 +15,43 @@ export class GeminiLiveService {
     }
   }
 
+  // --- THE MASTER KEY LOGIC ---
+  // This asks Google which model works for YOU.
+  async findWorkingModel() {
+    try {
+        console.log("Searching for available brains...");
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`);
+        const data = await response.json();
+        
+        if (!data.models) throw new Error("No models found for this key.");
+
+        // Find the best model that supports generating content
+        const validModel = data.models.find((m: any) => 
+            m.name.includes("gemini") && 
+            m.supportedGenerationMethods.includes("generateContent")
+        );
+
+        if (validModel) {
+            console.log("FOUND WORKING BRAIN:", validModel.name);
+            // Build the URL for this specific brain
+            this.modelUrl = `https://generativelanguage.googleapis.com/v1beta/${validModel.name}:generateContent?key=${API_KEY}`;
+            return true;
+        } else {
+            throw new Error("No chat models available.");
+        }
+    } catch (e: any) {
+        console.error(e);
+        alert("ACCOUNT ERROR: " + e.message);
+        return false;
+    }
+  }
+
   async start(onAudioData: (analyser: AnalyserNode) => void) {
-    // 1. Setup Mic
+    // 1. Find the Brain first
+    const brainReady = await this.findWorkingModel();
+    if (!brainReady) return;
+
+    // 2. Setup Mic
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -28,7 +64,7 @@ export class GeminiLiveService {
       console.error("Mic Error", e);
     }
 
-    // 2. Setup Ears
+    // 3. Setup Ears
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) return;
 
@@ -44,37 +80,34 @@ export class GeminiLiveService {
 
       if (!text) return;
 
-      // 3. SEND TO GOOGLE MANUALLY (Universal Endpoint)
+      // 4. SEND TO THE AUTO-DETECTED BRAIN
       try {
         const responseText = await this.askGoogleDirectly(text);
         this.speak(responseText);
       } catch (error: any) {
         console.error("API Error:", error);
-        alert("FINAL ERROR: " + error.message);
+        alert("ERROR: " + error.message);
       }
     };
 
-    // Auto-restart to keep listening
     this.recognition.onend = () => {
         setTimeout(() => { try { this.recognition.start(); } catch (e) {} }, 100);
     };
 
     this.recognition.start();
-    this.speak("System Online. I am listening.");
+    this.speak("System Online. Connected to Google.");
     return true; 
   }
 
-  // --- THE STABLE CONNECTION ---
   async askGoogleDirectly(userText: string) {
-    // CHANGE: Using 'v1' instead of 'v1beta' and 'gemini-pro' instead of 'flash'
-    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=${API_KEY}`;
-    
-    const response = await fetch(url, {
+    if (!this.modelUrl) throw new Error("Brain not connected.");
+
+    const response = await fetch(this.modelUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ 
-          parts: [{ text: "You are Sarah, a home renovation expert. Be helpful and brief (1 sentence). User says: " + userText }] 
+          parts: [{ text: "You are Sarah. Be brief. User says: " + userText }] 
         }]
       })
     });
@@ -88,7 +121,7 @@ export class GeminiLiveService {
     if (data.candidates && data.candidates[0] && data.candidates[0].content) {
         return data.candidates[0].content.parts[0].text;
     } else {
-        return "I heard you, but I don't have an answer.";
+        return "I am listening.";
     }
   }
   
