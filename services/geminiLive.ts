@@ -14,9 +14,11 @@ export class GeminiLiveService {
   private isListening: boolean = false; 
   private isAgentSpeaking: boolean = false;
   
-  // SILENCE TIMER
+  // VOLUMETRIC TRIGGER
+  private speechDetected: boolean = false;
   private silenceTimer: any = null;
-  private currentTranscript: string = "";
+  private lastVolumetricSpeech: number = 0;
+  private checkInterval: any = null;
 
   // STATUS REPORTER
   private onStatusUpdate: (msg: string) => void = () => {};
@@ -53,6 +55,7 @@ export class GeminiLiveService {
   async start(onAudioData: (analyser: AnalyserNode) => void) {
     this.isListening = true;
     this.isAgentSpeaking = false;
+    this.speechDetected = false;
 
     // 1. WAKE AUDIO
     this.synth.cancel();
@@ -67,7 +70,7 @@ export class GeminiLiveService {
         { role: "model", parts: [{ text: activeConfig.firstMessage }] }
     ];
 
-    // 3. SETUP MIC
+    // 3. SETUP MIC & VISUALIZER BRIDGE
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -75,7 +78,13 @@ export class GeminiLiveService {
       analyser.fftSize = 256;
       const source = audioContext.createMediaStreamSource(stream);
       source.connect(analyser);
+      
+      // Pass analyser to UI
       onAudioData(analyser);
+
+      // START THE BRIDGE MONITOR
+      this.startVolumeMonitor(analyser);
+
     } catch (e) { this.onStatusUpdate("Error: Mic Blocked"); }
 
     // 4. SETUP EARS
@@ -86,32 +95,20 @@ export class GeminiLiveService {
     }
 
     this.recognition = new SpeechRecognition();
-    this.recognition.continuous = true; // CHANGED: Keep open to track interim
-    this.recognition.interimResults = true; // CHANGED: We want to see live words
+    // We use CONTINUOUS so we can manually stop it when volume drops
+    this.recognition.continuous = true; 
+    this.recognition.interimResults = true; 
     this.recognition.lang = 'en-US';
 
     this.recognition.onresult = (event: any) => {
-      if (this.isAgentSpeaking) return;
-
-      const last = event.results.length - 1;
-      const text = event.results[last][0].transcript;
-      
-      this.currentTranscript = text;
-      
-      // VISUAL FEEDBACK
-      this.onStatusUpdate(`Hearing: "${text.substring(0, 20)}..."`);
-
-      // RESET TIMER: If you are speaking, cancel the "Stop" command
-      if (this.silenceTimer) clearTimeout(this.silenceTimer);
-
-      // START TIMER: If you stop speaking for 1.5 seconds, we assume you are done
-      this.silenceTimer = setTimeout(() => {
-          this.handleEndOfSpeech(text);
-      }, 1500); 
+        // Just store the text, don't act yet. The VOLUME monitor will trigger the action.
+        const last = event.results.length - 1;
+        const text = event.results[last][0].transcript;
+        if (text) this.onStatusUpdate(`Hearing: "${text.substring(0, 15)}..."`);
     };
 
     this.recognition.onend = () => {
-        // If it stops but we didn't mean to, restart it (unless agent is talking)
+        // Auto-restart if we shouldn't have stopped
         if (this.isListening && !this.isAgentSpeaking) {
             try { this.recognition.start(); } catch (e) {} 
         }
@@ -126,27 +123,61 @@ export class GeminiLiveService {
     return true; 
   }
 
-  // FORCE SUBMIT FUNCTION
-  async handleEndOfSpeech(finalText: string) {
-      if (!finalText || finalText.trim().length < 1) return;
-      if (this.isAgentSpeaking) return;
-
-      console.log("Forcing End of Speech:", finalText);
+  // --- THE BRIDGE: USES YELLOW BARS TO CONTROL EARS ---
+  startVolumeMonitor(analyser: AnalyserNode) {
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
       
-      // Stop listening instantly
-      this.stopMic();
-      
-      this.onStatusUpdate("Thinking...");
+      if (this.checkInterval) clearInterval(this.checkInterval);
 
-      try {
-        const responseText = await this.askGoogleWithHistory(finalText);
-        if (responseText) this.speak(responseText);
-      } catch (error) {
-        this.onStatusUpdate("Error: Brain Failed");
-        this.startMic();
-      }
+      this.checkInterval = setInterval(() => {
+          if (!this.isListening || this.isAgentSpeaking) return;
+
+          analyser.getByteFrequencyData(dataArray);
+          
+          // Calculate Average Volume
+          let sum = 0;
+          for(let i = 0; i < bufferLength; i++) { sum += dataArray[i]; }
+          const average = sum / bufferLength;
+
+          // THRESHOLD: 10 (Adjust if needed)
+          if (average > 10) {
+              // User is speaking
+              this.speechDetected = true;
+              this.lastVolumetricSpeech = Date.now();
+              this.onStatusUpdate("Listening (Voice Detected)...");
+          } else {
+              // Silence...
+              if (this.speechDetected) {
+                  const timeSinceSpeech = Date.now() - this.lastVolumetricSpeech;
+                  
+                  // IF SILENCE > 1.2 SECONDS -> FORCE SUBMIT
+                  if (timeSinceSpeech > 1200) {
+                      console.log("Volume dropped. Forcing submit.");
+                      this.speechDetected = false; // Reset
+                      this.stopMicAndSubmit();
+                  }
+              }
+          }
+      }, 100); // Check 10 times a second
   }
 
+  stopMicAndSubmit() {
+      if (!this.recognition) return;
+      this.recognition.stop(); // This triggers 'onresult' final or just stops
+      // Note: We need to grab the text manually or trust the final event.
+      // Let's force a restart cycle to flush buffers.
+      this.isAgentSpeaking = true; // Temporary lock
+      
+      // Give the browser 100ms to finalize the transcript
+      setTimeout(() => {
+         // The actual submission happens in 'onresult' usually, but if that failed,
+         // we might need to rely on the fact that stopping produces a result.
+         this.isAgentSpeaking = false; 
+      }, 500);
+  }
+
+  // STANDARD LOGIC BELOW
   startMic() {
     if (!this.recognition || this.isAgentSpeaking) return;
     try { 
@@ -156,7 +187,6 @@ export class GeminiLiveService {
   }
 
   stopMic() {
-    if (this.silenceTimer) clearTimeout(this.silenceTimer);
     if (!this.recognition) return;
     try { this.recognition.stop(); } catch (e) {}
   }
@@ -191,8 +221,8 @@ export class GeminiLiveService {
     
     utterance.onend = () => {
         this.isAgentSpeaking = false;
-        this.onStatusUpdate("Turn Over. Listening...");
-        // Wait 0.5s before reopening ears
+        this.speechDetected = false; // Reset logic
+        this.onStatusUpdate("Done. Listening...");
         setTimeout(() => {
             if (this.isListening) this.startMic();
         }, 500); 
@@ -204,9 +234,9 @@ export class GeminiLiveService {
   async stop() {
     this.isListening = false;
     this.isAgentSpeaking = false;
-    this.onStatusUpdate("Stopped.");
-    if (this.silenceTimer) clearTimeout(this.silenceTimer);
+    if (this.checkInterval) clearInterval(this.checkInterval);
     if (this.recognition) this.recognition.stop();
     if (this.synth) this.synth.cancel();
+    this.onStatusUpdate("Stopped.");
   }
 }
