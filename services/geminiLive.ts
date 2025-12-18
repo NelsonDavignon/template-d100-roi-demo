@@ -10,16 +10,40 @@ export class GeminiLiveService {
   private recognition: any;
   private modelUrl: string = ""; 
   private voices: SpeechSynthesisVoice[] = [];
-  
-  // MEMORY STORAGE
   private history: { role: string; parts: { text: string }[] }[] = [];
 
   constructor() {
     this.synth = window.speechSynthesis;
     if (typeof window !== 'undefined') {
+        // Force load voices for iOS
         const loadVoices = () => { this.voices = this.synth.getVoices(); };
         this.synth.onvoiceschanged = loadVoices;
         loadVoices(); 
+    }
+  }
+
+  // --- IPHONE FIX: UNLOCK AUDIO ---
+  // This plays a silent sound instantly to keep the speakers open
+  unlockAudio() {
+    if (typeof window === 'undefined') return;
+    
+    // 1. Wake up the Speech Synthesis
+    const utterance = new SpeechSynthesisUtterance(" "); // Silent space
+    utterance.volume = 0; // Silent
+    this.synth.speak(utterance);
+    this.synth.cancel(); // Reset it immediately
+
+    // 2. Wake up the AudioContext (for the visualizer)
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (AudioContext) {
+        const ctx = new AudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        gain.gain.value = 0; // Silent
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(0);
+        osc.stop(0.1);
     }
   }
 
@@ -41,18 +65,15 @@ export class GeminiLiveService {
   }
 
   async start(onAudioData: (analyser: AnalyserNode) => void) {
+    // STEP 1: UNLOCK IPHONE AUDIO IMMEDIATELY
+    this.unlockAudio();
+
     await this.findWorkingModel();
 
-    // RESET MEMORY ON START
+    // RESET MEMORY
     this.history = [
-        {
-            role: "user",
-            parts: [{ text: activeConfig.systemPrompt }] // The "God Rule" is always first
-        },
-        {
-            role: "model",
-            parts: [{ text: activeConfig.firstMessage }] // She knows she just said this
-        }
+        { role: "user", parts: [{ text: activeConfig.systemPrompt }] },
+        { role: "model", parts: [{ text: activeConfig.firstMessage }] }
     ];
 
     try {
@@ -89,41 +110,40 @@ export class GeminiLiveService {
     };
 
     this.recognition.start();
-    this.speak(activeConfig.firstMessage); 
+    
+    // DELAY THE GREETING SLIGHTLY (To ensure iOS handles the transition)
+    setTimeout(() => {
+        this.speak(activeConfig.firstMessage);
+    }, 500);
+    
     return true; 
   }
 
-  // NEW FUNCTION: Sends the whole history, not just the last sentence
   async askGoogleWithHistory(userText: string) {
     if (!this.modelUrl) return "I'm having trouble connecting.";
 
-    // 1. Add User's new message to history
     this.history.push({ role: "user", parts: [{ text: userText }] });
 
-    // 2. Send the WHOLE history to Google
     const response = await fetch(this.modelUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: this.history
-      })
+      body: JSON.stringify({ contents: this.history })
     });
 
     const data = await response.json();
     if (data.candidates && data.candidates[0]) {
         const answer = data.candidates[0].content.parts[0].text;
-        
-        // 3. Add AI's answer to history (so she remembers she said it)
         this.history.push({ role: "model", parts: [{ text: answer }] });
-        
         return answer;
     }
     return "";
   }
   
   speak(text: string) {
-    this.synth.cancel();
+    this.synth.cancel(); // Critical for iOS: Stop any previous sound
+    
     const utterance = new SpeechSynthesisUtterance(text);
+    
     if (this.voices.length > 0) {
         const targetGender = (activeConfig as any).voiceGender || 'female';
         let bestVoice;
@@ -137,10 +157,12 @@ export class GeminiLiveService {
             bestVoice = 
                 this.voices.find(v => v.name.includes("Natural") && v.name.includes("English") && !v.name.includes("Male")) || 
                 this.voices.find(v => v.name.includes("Google US English")) || 
+                this.voices.find(v => v.name.includes("Samantha")) || // Common iOS Voice
                 this.voices.find(v => v.name.includes("Female"));
         }
         if (bestVoice) utterance.voice = bestVoice;
     }
+    
     utterance.rate = 1.0; 
     this.synth.speak(utterance);
   }
