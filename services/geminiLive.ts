@@ -21,7 +21,7 @@ export class GeminiLiveService {
     this.synth = window.speechSynthesis;
     
     // Setup Brain
-    const model = this.ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = this.ai.getGenerativeModel({ model: "gemini-pro" });
     this.chat = model.startChat({
       history: [
         { role: "user", parts: [{ text: "You are Sarah. Reply in 1 short sentence." }] },
