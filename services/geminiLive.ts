@@ -1,4 +1,4 @@
-import { activeConfig } from "../config"; // <--- IMPORTS YOUR SETTINGS
+import { activeConfig } from "../config";
 
 const API_KEY = 
   import.meta.env.VITE_GEMINI_API_KEY || 
@@ -33,9 +33,7 @@ export class GeminiLiveService {
             this.modelUrl = `https://generativelanguage.googleapis.com/v1beta/${validModel.name}:generateContent?key=${API_KEY}`;
             return true;
         }
-    } catch (e) {
-        console.error(e);
-    }
+    } catch (e) { console.error(e); }
     return false;
   }
 
@@ -76,15 +74,12 @@ export class GeminiLiveService {
     };
 
     this.recognition.start();
-    // USES THE CONFIG MESSAGE
     this.speak(activeConfig.firstMessage); 
     return true; 
   }
 
   async askGoogleDirectly(userText: string) {
     if (!this.modelUrl) return "I'm having trouble connecting.";
-
-    // USES THE CONFIG PROMPT
     const systemPrompt = activeConfig.systemPrompt;
     
     const response = await fetch(this.modelUrl, {
@@ -102,17 +97,35 @@ export class GeminiLiveService {
     return "";
   }
   
+  // UPDATED: Now supports Gender Selection
   speak(text: string) {
     this.synth.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
+    
     if (this.voices.length > 0) {
-        const bestVoice = 
-            this.voices.find(v => v.name.includes("Natural") && v.name.includes("English")) || 
-            this.voices.find(v => v.name.includes("Google US English")) || 
-            this.voices.find(v => v.name.includes("Female"));
+        // 1. Get the gender from config (default to female if missing)
+        const targetGender = (activeConfig as any).voiceGender || 'female';
+        
+        let bestVoice;
+
+        if (targetGender === 'male') {
+            // TRY TO FIND A MALE VOICE
+            bestVoice = 
+                this.voices.find(v => v.name.includes("Male") && v.name.includes("English")) ||
+                this.voices.find(v => v.name.includes("David")) || // Common Male ID
+                this.voices.find(v => v.name.includes("Mark"));    // Common Male ID
+        } else {
+            // TRY TO FIND A FEMALE VOICE (Natural preferred)
+            bestVoice = 
+                this.voices.find(v => v.name.includes("Natural") && v.name.includes("English") && !v.name.includes("Male")) || 
+                this.voices.find(v => v.name.includes("Google US English")) || 
+                this.voices.find(v => v.name.includes("Female"));
+        }
+
         if (bestVoice) utterance.voice = bestVoice;
     }
-    utterance.rate = 0.95;
+    
+    utterance.rate = 1.0; // Male voices sound better at normal speed
     this.synth.speak(utterance);
   }
 
