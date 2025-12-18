@@ -20,7 +20,7 @@ export class GeminiLiveService {
     this.ai = new GoogleGenerativeAI(API_KEY);
     this.synth = window.speechSynthesis;
     
-    // SAFETY: Turn off filters so she doesn't get blocked
+    // SAFETY: Turn off filters
     const safetySettings = [
       { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
       { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -28,9 +28,7 @@ export class GeminiLiveService {
       { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
     ];
 
-    // --- THE PERFORMANCE FIX ---
-    // We use "gemini-pro" (The Classic Model). 
-    // It is faster and not region-locked like "flash".
+    // Using 'gemini-pro' (The most stable version)
     const model = this.ai.getGenerativeModel({ 
       model: "gemini-pro", 
       safetySettings: safetySettings 
@@ -40,11 +38,11 @@ export class GeminiLiveService {
       history: [
         {
           role: "user",
-          parts: [{ text: "You are Sarah. Be helpful and brief. Start by saying: 'Hello! Sarah is listening.'" }],
+          parts: [{ text: "You are Sarah. Start by saying: 'System Ready. Please speak.'" }],
         },
         {
           role: "model",
-          parts: [{ text: "Hello! Sarah is listening." }],
+          parts: [{ text: "System Ready. Please speak." }],
         },
       ],
     });
@@ -60,11 +58,14 @@ export class GeminiLiveService {
       this.source.connect(this.analyser);
       onAudioData(this.analyser);
     } catch (e) {
-      console.error("Mic Access Denied", e);
+      alert("MICROPHONE ERROR: " + e); // <--- POPUP 1
     }
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
+    if (!SpeechRecognition) {
+      alert("BROWSER ERROR: Use Google Chrome.");
+      return;
+    }
 
     this.recognition = new SpeechRecognition();
     this.recognition.continuous = true;
@@ -74,17 +75,16 @@ export class GeminiLiveService {
     this.recognition.onresult = async (event: any) => {
       const last = event.results.length - 1;
       const text = event.results[last][0].transcript;
-      console.log("Sarah Heard:", text);
-
-      if (!text) return;
+      
+      console.log("Sarah Heard:", text); // Check Console if she ignores you
 
       try {
         const result = await this.chat.sendMessage(text);
         const response = result.response.text();
         this.speak(response);
       } catch (error: any) {
-        console.error("Brain Error:", error);
-        console.log("Retrying connection...");
+        // <--- THIS IS THE IMPORTANT PART
+        alert("GOOGLE BRAIN ERROR: " + error.toString());
       }
     };
 
@@ -93,16 +93,13 @@ export class GeminiLiveService {
     };
 
     this.recognition.start();
-    this.speak("Hello! Sarah is listening.");
+    this.speak("System Ready. Please speak.");
     return true; 
   }
   
   speak(text: string) {
     this.synth.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    const voices = this.synth.getVoices();
-    const bestVoice = voices.find(v => v.name.includes("Google US English")) || voices.find(v => v.name.includes("Female"));
-    if (bestVoice) utterance.voice = bestVoice;
     this.synth.speak(utterance);
   }
 
