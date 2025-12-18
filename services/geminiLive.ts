@@ -9,25 +9,14 @@ export class GeminiLiveService {
   private synth: SpeechSynthesis;
   private recognition: any;
   private modelUrl: string = ""; 
-  private voices: SpeechSynthesisVoice[] = [];
+  // REMOVED: Complex voice list (causing the crash)
   private history: { role: string; parts: { text: string }[] }[] = [];
   
-  // STATE FLAGS
   private isListening: boolean = false; 
   private isAgentSpeaking: boolean = false;
 
   constructor() {
     this.synth = window.speechSynthesis;
-    
-    // Load voices immediately
-    if (typeof window !== 'undefined') {
-        const loadVoices = () => { 
-            this.voices = this.synth.getVoices(); 
-        };
-        this.synth.onvoiceschanged = loadVoices;
-        loadVoices(); 
-        setTimeout(loadVoices, 1000);
-    }
   }
 
   async findWorkingModel() {
@@ -51,20 +40,15 @@ export class GeminiLiveService {
     this.isListening = true;
     this.isAgentSpeaking = false;
 
-    // 1. WAKE UP AUDIO (Safe for both)
-    const utterance = new SpeechSynthesisUtterance(" ");
-    this.synth.speak(utterance);
-    this.synth.cancel();
-
     await this.findWorkingModel();
 
-    // 2. RESET MEMORY
+    // RESET MEMORY
     this.history = [
         { role: "user", parts: [{ text: activeConfig.systemPrompt }] },
         { role: "model", parts: [{ text: activeConfig.firstMessage }] }
     ];
 
-    // 3. SETUP MIC
+    // SETUP MIC
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -75,21 +59,16 @@ export class GeminiLiveService {
       onAudioData(analyser);
     } catch (e) { console.error("Mic Error", e); }
 
-    // 4. SETUP EARS
+    // SETUP EARS
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) return;
 
     this.recognition = new SpeechRecognition();
-    
-    // UNIVERSAL: ALWAYS FALSE
-    // We treat the Mac exactly like the iPhone. 
-    // It listens for ONE phrase, then stops. This prevents the "Hang" bug.
-    this.recognition.continuous = false; 
+    this.recognition.continuous = false; // Safe Mode
     this.recognition.interimResults = false;
     this.recognition.lang = 'en-US';
 
     this.recognition.onresult = async (event: any) => {
-      // Safety Check: If agent is talking, ignore the mic
       if (this.isAgentSpeaking) return;
 
       const last = event.results.length - 1;
@@ -98,31 +77,25 @@ export class GeminiLiveService {
       if (!text || text.trim().length < 1) return;
 
       console.log("User said:", text);
-      
-      // Stop mic immediately to process (Universal)
       this.stopMic(); 
 
       try {
         const responseText = await this.askGoogleWithHistory(text);
         if (responseText) this.speak(responseText);
       } catch (error) {
-        // If error, restart listening
         this.startMic();
       }
     };
 
-    // RESTART LOOP (Universal)
     this.recognition.onend = () => {
-        // If we are supposed to be listening AND the Agent is NOT talking...
         if (this.isListening && !this.isAgentSpeaking) {
-            // Restart the engine
             try { this.recognition.start(); } catch (e) {} 
         }
     };
 
-    // KICKSTART
     this.startMic();
 
+    // SIMPLE GREETING
     setTimeout(() => {
         this.speak(activeConfig.firstMessage);
     }, 500);
@@ -161,45 +134,18 @@ export class GeminiLiveService {
   
   speak(text: string) {
     this.isAgentSpeaking = true;
-    this.stopMic(); // Hard stop ears on ALL devices
+    this.stopMic(); 
     this.synth.cancel();
 
+    // VANILLA SPEAKER: No voice selection, just default
     const utterance = new SpeechSynthesisUtterance(text);
-    
-    // VOICE SELECTION
-    if (this.voices.length > 0) {
-        const targetGender = (activeConfig as any).voiceGender || 'female';
-        let bestVoice;
-
-        if (targetGender === 'male') {
-            bestVoice = 
-                this.voices.find(v => v.name.includes("Daniel")) || 
-                this.voices.find(v => v.name.includes("Male") && v.name.includes("English")) ||
-                this.voices.find(v => v.name.includes("David"));   
-        } else {
-            bestVoice = 
-                this.voices.find(v => v.name.includes("Samantha")) || 
-                this.voices.find(v => v.name.includes("Google US English")) || 
-                this.voices.find(v => v.name.includes("Natural") && !v.name.includes("Male"));
-        }
-        
-        // Final fallback
-        if (!bestVoice) {
-             if (targetGender === 'male') bestVoice = this.voices.find(v => v.name.includes("Male"));
-             else bestVoice = this.voices.find(v => v.name.includes("Female"));
-        }
-        
-        if (bestVoice) utterance.voice = bestVoice;
-    }
-    
     utterance.rate = 1.0; 
     
     utterance.onend = () => {
         this.isAgentSpeaking = false;
-        // Wait 0.5s for echo to fade, then listen
         setTimeout(() => {
             if (this.isListening) this.startMic();
-        }, 500); 
+        }, 200); 
     };
 
     this.synth.speak(utterance);
