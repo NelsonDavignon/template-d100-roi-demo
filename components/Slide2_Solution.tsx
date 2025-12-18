@@ -1,15 +1,26 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Phone, Square } from 'lucide-react';
-import { GeminiLiveService } from '../services/geminiLive'; // Note the ".." to go up one folder
-import { activeConfig } from '../config'; // Note the ".." to find the config
+import { VapiService } from '../services/vapi'; // <--- USING VAPI NOW
+import { activeConfig } from '../config'; 
 
 export default function Slide2_Solution() {
   const [isActive, setIsActive] = useState(false);
-  const geminiService = useRef(new GeminiLiveService());
+  const [status, setStatus] = useState("Ready");
+  
+  // Initialize the Vapi Service
+  const vapiService = useRef(new VapiService());
+  
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>();
 
-  // Visualizer Animation Loop
+  // Listen for status updates (Connecting, Listening, Speaking...)
+  useEffect(() => {
+    vapiService.current.setStatusListener((msg) => {
+        setStatus(msg);
+    });
+  }, []);
+
+  // Visualizer Logic (Yellow Bars)
   const drawVisualizer = (analyser: AnalyserNode) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -23,10 +34,9 @@ export default function Slide2_Solution() {
       animationRef.current = requestAnimationFrame(draw);
       analyser.getByteFrequencyData(dataArray);
       
-      // Clear canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Dynamic Color from Config
+      // Bar Color Logic
       const isBlue = activeConfig.primaryColor.includes('blue');
       const isGreen = activeConfig.primaryColor.includes('green');
       let barColor = '234, 179, 8'; // Default Yellow
@@ -49,7 +59,8 @@ export default function Slide2_Solution() {
 
   const handleStart = async () => {
     setIsActive(true);
-    await geminiService.current.start((analyser) => {
+    // Start Vapi and pass the visualizer callback
+    await vapiService.current.start((analyser) => {
       drawVisualizer(analyser);
     });
   };
@@ -57,21 +68,20 @@ export default function Slide2_Solution() {
   const handleStop = async () => {
     setIsActive(false);
     if (animationRef.current) cancelAnimationFrame(animationRef.current);
-    await geminiService.current.stop();
+    vapiService.current.stop();
   };
 
-  // Cleanup on unmount (if you switch slides)
+  // Cleanup on unmount (if user leaves page)
   useEffect(() => {
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
-      geminiService.current.stop();
+      vapiService.current.stop();
     };
   }, []);
 
   return (
     <div className="flex flex-col items-center justify-center h-full space-y-8 px-4">
       
-      {/* HEADER SECTION (Controlled by Config) */}
       <div className="text-center space-y-6 max-w-4xl mx-auto">
         <div className="inline-flex items-center space-x-2 bg-white/5 border border-white/10 rounded-full px-4 py-1.5">
           <span className="relative flex h-2 w-2">
@@ -92,15 +102,12 @@ export default function Slide2_Solution() {
         </p>
       </div>
 
-      {/* INTERACTIVE DEMO BOX */}
       <div className="relative group w-full max-w-sm mx-auto mt-8">
-        {/* Dynamic Glow Effect */}
         <div className={`absolute -inset-1 bg-gradient-to-r ${activeConfig.primaryColor.replace('text-', 'from-').replace('500', '600')} to-white/20 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-1000`}></div>
         
         <div className="relative bg-[#111] border border-white/10 rounded-2xl p-8 shadow-2xl">
           <div className="flex flex-col items-center space-y-6">
             
-            {/* Visualizer Circle */}
             <div className="relative">
               {isActive ? (
                 <div className={`w-24 h-24 rounded-full bg-white/5 border border-white/20 flex items-center justify-center`}>
@@ -115,14 +122,13 @@ export default function Slide2_Solution() {
 
             <div className="space-y-2 text-center">
               <h3 className="text-xl font-semibold text-white">
-                {isActive ? `${activeConfig.agentName} is listening...` : "Ready to take the call..."}
+                {status}
               </h3>
               <p className="text-sm text-gray-500 uppercase tracking-widest font-medium">
                  {activeConfig.agentName}
               </p>
             </div>
 
-            {/* Start/Stop Buttons */}
             {!isActive ? (
               <button
                 onClick={handleStart}
