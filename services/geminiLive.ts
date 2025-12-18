@@ -1,4 +1,5 @@
-// SECURE MODE (RESTORED): The version that worked + Safe Voice Fixes.
+// FINAL PRESENTATION VERSION
+// Secure Key + Natural Voice + Human Greeting
 
 const API_KEY = 
   import.meta.env.VITE_GEMINI_API_KEY || 
@@ -14,22 +15,20 @@ export class GeminiLiveService {
   constructor() {
     this.synth = window.speechSynthesis;
     
-    // SAFE VOICE LOADER: Listens for when voices are actually ready
+    // Load voices immediately so she doesn't sound robotic
     if (typeof window !== 'undefined') {
         const loadVoices = () => {
             this.voices = this.synth.getVoices();
-            console.log("Voices loaded:", this.voices.length);
         };
         this.synth.onvoiceschanged = loadVoices;
-        loadVoices(); // Try immediately too
+        loadVoices(); 
     }
   }
 
-  // --- BRAIN FINDER ---
   async findWorkingModel() {
     try {
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`);
-        if (!response.ok) throw new Error("Key Rejected");
+        if (!response.ok) return false;
         const data = await response.json();
         const validModel = data.models?.find((m: any) => 
             m.name.includes("gemini") && 
@@ -46,10 +45,8 @@ export class GeminiLiveService {
   }
 
   async start(onAudioData: (analyser: AnalyserNode) => void) {
-    // Connect to Brain
     await this.findWorkingModel();
 
-    // Setup Mic
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -62,7 +59,6 @@ export class GeminiLiveService {
       console.error("Mic Error", e);
     }
 
-    // Setup Ears
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) return;
 
@@ -76,8 +72,7 @@ export class GeminiLiveService {
       const text = event.results[last][0].transcript;
       console.log("Sarah Heard:", text);
 
-      // --- THE LOOP FIX ---
-      // Ignore empty silence or super short noises
+      // IGNORE silence so she doesn't interrupt
       if (!text || text.trim().length < 2) return; 
 
       try {
@@ -88,21 +83,22 @@ export class GeminiLiveService {
       }
     };
 
-    // Keep her alive
     this.recognition.onend = () => {
         setTimeout(() => { try { this.recognition.start(); } catch (e) {} }, 100);
     };
 
     this.recognition.start();
-    this.speak("System Online. I am listening.");
+    
+    // HERE IS THE CHANGE: She introduces herself properly now
+    this.speak("Hi! I'm Sarah. How can I help with your renovation project?");
     return true; 
   }
 
   async askGoogleDirectly(userText: string) {
-    if (!this.modelUrl) return "I am currently offline.";
+    if (!this.modelUrl) return "I'm having trouble connecting.";
 
-    // THE PERSONA: Short, Human, Helpful.
-    const systemPrompt = "You are Sarah, a home renovation expert. Be warm and brief (1 sentence max).";
+    // INSTRUCTIONS: Be human, be brief.
+    const systemPrompt = "You are Sarah, a warm and professional home renovation expert. Keep your answers extremely short (1 sentence max).";
     
     const response = await fetch(this.modelUrl, {
       method: 'POST',
@@ -125,7 +121,6 @@ export class GeminiLiveService {
     this.synth.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     
-    // SAFE VOICE SELECTOR: Doesn't crash if list is empty
     if (this.voices.length > 0) {
         const bestVoice = 
             this.voices.find(v => v.name.includes("Natural") && v.name.includes("English")) || 
@@ -135,7 +130,6 @@ export class GeminiLiveService {
         if (bestVoice) utterance.voice = bestVoice;
     }
     
-    // Slight slowdown for realism
     utterance.rate = 0.95;
     this.synth.speak(utterance);
   }
