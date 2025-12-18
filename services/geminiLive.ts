@@ -1,10 +1,7 @@
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 
-const API_KEY = 
-  import.meta.env.VITE_GEMINI_API_KEY || 
-  import.meta.env.NEXT_PUBLIC_GEMINI_API_KEY || 
-  import.meta.env.REACT_APP_GEMINI_API_KEY ||
-  "";
+// PASTE YOUR KEY INSIDE THE QUOTES BELOW
+const API_KEY = "AIzaSyAo8W7oXa-eBCO-9T-zN_RmvvisLDNxSxk";
 
 export class GeminiLiveService {
   private ai: GoogleGenerativeAI;
