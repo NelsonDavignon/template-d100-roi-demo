@@ -1,4 +1,4 @@
-// MANUAL MODE: Bypassing the library to hit the API directly.
+// UNIVERSAL MODE: Using the stable 'v1' endpoint and 'gemini-pro' model.
 
 // PASTE YOUR NEW TIER 1 KEY HERE
 const API_KEY = "AIzaSyBDZDS3qHCuJ_7PF8Kr9ro1EY0ZAuayekg";
@@ -44,13 +44,13 @@ export class GeminiLiveService {
 
       if (!text) return;
 
-      // 3. SEND TO GOOGLE MANUALLY
+      // 3. SEND TO GOOGLE MANUALLY (Universal Endpoint)
       try {
         const responseText = await this.askGoogleDirectly(text);
         this.speak(responseText);
       } catch (error: any) {
         console.error("API Error:", error);
-        alert("VIP ACCESS ERROR: " + error.message);
+        alert("FINAL ERROR: " + error.message);
       }
     };
 
@@ -60,14 +60,14 @@ export class GeminiLiveService {
     };
 
     this.recognition.start();
-    this.speak("System Online. I am ready.");
+    this.speak("System Online. I am listening.");
     return true; 
   }
 
-  // --- THE MANUAL CONNECTION ---
+  // --- THE STABLE CONNECTION ---
   async askGoogleDirectly(userText: string) {
-    // We use the "gemini-1.5-flash" model which is included in Tier 1
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
+    // CHANGE: Using 'v1' instead of 'v1beta' and 'gemini-pro' instead of 'flash'
+    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=${API_KEY}`;
     
     const response = await fetch(url, {
       method: 'POST',
@@ -85,11 +85,10 @@ export class GeminiLiveService {
     }
 
     const data = await response.json();
-    // Extract the answer safely
     if (data.candidates && data.candidates[0] && data.candidates[0].content) {
         return data.candidates[0].content.parts[0].text;
     } else {
-        return "I heard you, but I am not sure what to say.";
+        return "I heard you, but I don't have an answer.";
     }
   }
   
