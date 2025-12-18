@@ -1,5 +1,4 @@
-// FINAL PRESENTATION VERSION
-// Secure Key + Natural Voice + Human Greeting
+import { activeConfig } from "../config"; // <--- IMPORTS YOUR SETTINGS
 
 const API_KEY = 
   import.meta.env.VITE_GEMINI_API_KEY || 
@@ -14,12 +13,8 @@ export class GeminiLiveService {
 
   constructor() {
     this.synth = window.speechSynthesis;
-    
-    // Load voices immediately so she doesn't sound robotic
     if (typeof window !== 'undefined') {
-        const loadVoices = () => {
-            this.voices = this.synth.getVoices();
-        };
+        const loadVoices = () => { this.voices = this.synth.getVoices(); };
         this.synth.onvoiceschanged = loadVoices;
         loadVoices(); 
     }
@@ -39,7 +34,7 @@ export class GeminiLiveService {
             return true;
         }
     } catch (e) {
-        console.error("Connection failed", e);
+        console.error(e);
     }
     return false;
   }
@@ -55,9 +50,7 @@ export class GeminiLiveService {
       const source = audioContext.createMediaStreamSource(stream);
       source.connect(analyser);
       onAudioData(analyser);
-    } catch (e) {
-      console.error("Mic Error", e);
-    }
+    } catch (e) { console.error(e); }
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) return;
@@ -70,17 +63,12 @@ export class GeminiLiveService {
     this.recognition.onresult = async (event: any) => {
       const last = event.results.length - 1;
       const text = event.results[last][0].transcript;
-      console.log("Sarah Heard:", text);
-
-      // IGNORE silence so she doesn't interrupt
       if (!text || text.trim().length < 2) return; 
 
       try {
         const responseText = await this.askGoogleDirectly(text);
         if (responseText) this.speak(responseText);
-      } catch (error) {
-        console.error("API Error", error);
-      }
+      } catch (error) {}
     };
 
     this.recognition.onend = () => {
@@ -88,25 +76,22 @@ export class GeminiLiveService {
     };
 
     this.recognition.start();
-    
-    // HERE IS THE CHANGE: She introduces herself properly now
-    this.speak("Hi! I'm Sarah. How can I help with your renovation project?");
+    // USES THE CONFIG MESSAGE
+    this.speak(activeConfig.firstMessage); 
     return true; 
   }
 
   async askGoogleDirectly(userText: string) {
     if (!this.modelUrl) return "I'm having trouble connecting.";
 
-    // INSTRUCTIONS: Be human, be brief.
-    const systemPrompt = "You are Sarah, a warm and professional home renovation expert. Keep your answers extremely short (1 sentence max).";
+    // USES THE CONFIG PROMPT
+    const systemPrompt = activeConfig.systemPrompt;
     
     const response = await fetch(this.modelUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ 
-          parts: [{ text: systemPrompt + " User says: " + userText }] 
-        }]
+        contents: [{ parts: [{ text: systemPrompt + " User says: " + userText }] }]
       })
     });
 
@@ -120,16 +105,13 @@ export class GeminiLiveService {
   speak(text: string) {
     this.synth.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    
     if (this.voices.length > 0) {
         const bestVoice = 
             this.voices.find(v => v.name.includes("Natural") && v.name.includes("English")) || 
             this.voices.find(v => v.name.includes("Google US English")) || 
             this.voices.find(v => v.name.includes("Female"));
-            
         if (bestVoice) utterance.voice = bestVoice;
     }
-    
     utterance.rate = 0.95;
     this.synth.speak(utterance);
   }
