@@ -14,10 +14,9 @@ export class GeminiLiveService {
   private isListening: boolean = false; 
   private isAgentSpeaking: boolean = false;
   
-  // VAD VARIABLES
-  private checkInterval: any = null;
-  private lastSpeechTime: number = 0;
-  private currentTranscript: string = ""; // Holds the words BEFORE they are final
+  // TEXT-BASED TIMER (The most reliable fix)
+  private silenceTimer: any = null;
+  private currentTranscript: string = "";
 
   private onStatusUpdate: (msg: string) => void = () => {};
 
@@ -74,10 +73,6 @@ export class GeminiLiveService {
       const source = audioContext.createMediaStreamSource(stream);
       source.connect(analyser);
       onAudioData(analyser);
-      
-      // START THE VOLUME MONITOR
-      this.startVolumeMonitor(analyser);
-
     } catch (e) { this.onStatusUpdate("Error: Mic Blocked"); }
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -85,23 +80,30 @@ export class GeminiLiveService {
 
     this.recognition = new SpeechRecognition();
     this.recognition.continuous = true; 
-    this.recognition.interimResults = true; // IMPORTANT: We catch words immediately
+    this.recognition.interimResults = true; 
     this.recognition.lang = 'en-US';
 
+    // --- THE LOGIC: RESET TIMER ON EVERY WORD ---
     this.recognition.onresult = (event: any) => {
         const last = event.results.length - 1;
         const text = event.results[last][0].transcript;
         
-        // Save the text to our variable
         if (text && text.trim().length > 0) {
             this.currentTranscript = text;
-            this.lastSpeechTime = Date.now(); // Reset silence timer because we heard words
             this.onStatusUpdate(`Hearing: "${text.substring(0, 20)}..."`);
+            
+            // 1. Clear the old timer (User is still talking)
+            if (this.silenceTimer) clearTimeout(this.silenceTimer);
+
+            // 2. Start a new timer. If no new words come in 1.5s, we SEND.
+            this.silenceTimer = setTimeout(() => {
+                this.forceSubmit();
+            }, 1500);
         }
     };
 
-    // Auto-restart if it dies unexpectedly
     this.recognition.onend = () => {
+        // Only restart if we are listening AND agent is quiet
         if (this.isListening && !this.isAgentSpeaking) {
             try { this.recognition.start(); } catch (e) {} 
         }
@@ -112,52 +114,23 @@ export class GeminiLiveService {
     return true; 
   }
 
-  // --- THE "MANUAL OVERRIDE" ENGINE ---
-  startVolumeMonitor(analyser: AnalyserNode) {
-      const bufferLength = analyser.frequencyBinCount;
-      const dataArray = new Uint8Array(bufferLength);
+  forceSubmit() {
+      if (this.currentTranscript.length < 1) return;
+      if (this.isAgentSpeaking) return;
+
+      console.log("Time's up. Sending:", this.currentTranscript);
+      this.onStatusUpdate("Silence detected. Sending...");
       
-      if (this.checkInterval) clearInterval(this.checkInterval);
-
-      this.checkInterval = setInterval(() => {
-          if (!this.isListening || this.isAgentSpeaking) return;
-
-          analyser.getByteFrequencyData(dataArray);
-          let sum = 0;
-          for(let i = 0; i < bufferLength; i++) sum += dataArray[i];
-          const average = sum / bufferLength;
-
-          // 1. IF VOLUME IS HIGH -> We are definitely talking
-          if (average > 10) {
-              this.lastSpeechTime = Date.now();
-          } 
-          
-          // 2. CHECK FOR SILENCE
-          // If we have text waiting AND it has been silent for 1.2 seconds...
-          const timeSinceSpeech = Date.now() - this.lastSpeechTime;
-          
-          if (this.currentTranscript.length > 0 && timeSinceSpeech > 1200) {
-              
-              console.log("Silence detected. Forcing Submit:", this.currentTranscript);
-              this.onStatusUpdate("Silence detected. Sending...");
-              
-              // FORCE SEND
-              const textToSend = this.currentTranscript;
-              this.currentTranscript = ""; // Clear it so we don't send twice
-              
-              this.handleFinalSpeech(textToSend);
-          }
-
-      }, 100);
+      const textToSend = this.currentTranscript;
+      this.currentTranscript = ""; // Clear buffer
+      
+      // Stop mic to process
+      this.stopMic(); 
+      this.handleFinalSpeech(textToSend);
   }
 
   async handleFinalSpeech(text: string) {
-      if (!text || text.trim().length < 1) return;
-      
-      // Stop the mic so we don't hear ourselves
       this.isAgentSpeaking = true; 
-      this.recognition.stop(); 
-
       this.onStatusUpdate("Thinking...");
       
       try {
@@ -172,6 +145,12 @@ export class GeminiLiveService {
   startMic() {
     if (!this.recognition || this.isAgentSpeaking) return;
     try { this.recognition.start(); this.onStatusUpdate("Listening..."); } catch (e) {}
+  }
+
+  stopMic() {
+    if (this.silenceTimer) clearTimeout(this.silenceTimer);
+    if (!this.recognition) return;
+    try { this.recognition.stop(); } catch (e) {}
   }
 
   async askGoogleWithHistory(userText: string) {
@@ -203,7 +182,7 @@ export class GeminiLiveService {
     
     utterance.onend = () => {
         this.isAgentSpeaking = false;
-        this.currentTranscript = ""; // Clear buffer
+        this.currentTranscript = ""; 
         this.onStatusUpdate("Done. Listening...");
         setTimeout(() => { if (this.isListening) this.startMic(); }, 500); 
     };
@@ -214,7 +193,7 @@ export class GeminiLiveService {
   async stop() {
     this.isListening = false;
     this.isAgentSpeaking = false;
-    if (this.checkInterval) clearInterval(this.checkInterval);
+    if (this.silenceTimer) clearTimeout(this.silenceTimer);
     if (this.recognition) this.recognition.stop();
     if (this.synth) this.synth.cancel();
     this.onStatusUpdate("Stopped.");
