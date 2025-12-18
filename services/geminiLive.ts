@@ -1,7 +1,7 @@
 // RAW MODE: No Libraries. Direct connection.
 
 // PASTE YOUR KEY HERE IF IT IS NOT ALREADY
-const API_KEY = "AIzaSyAo8W7oXa-eBC0-9T-zN_RmvvisLDNxSxK";
+const API_KEY = "AIzaSyBDZDS3qHCuJ_7PF8Kr9ro1EY0ZAuayekg";
 
 export class GeminiLiveService {
   private synth: SpeechSynthesis;
