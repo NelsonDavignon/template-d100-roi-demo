@@ -9,20 +9,31 @@ export class GeminiLiveService {
   private synth: SpeechSynthesis;
   private recognition: any;
   private modelUrl: string = ""; 
-  // REMOVED: Complex voice list (causing the crash)
   private history: { role: string; parts: { text: string }[] }[] = [];
   
   private isListening: boolean = false; 
   private isAgentSpeaking: boolean = false;
+  
+  // NEW: Function to send status updates to the screen
+  private onStatusUpdate: (msg: string) => void = () => {};
 
   constructor() {
     this.synth = window.speechSynthesis;
   }
 
+  // ALLOW THE UI TO LISTEN TO STATUS UPDATES
+  setStatusListener(callback: (msg: string) => void) {
+    this.onStatusUpdate = callback;
+  }
+
   async findWorkingModel() {
+    this.onStatusUpdate("Connecting to Google...");
     try {
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`);
-        if (!response.ok) return false;
+        if (!response.ok) {
+            this.onStatusUpdate("ERROR: API Key Invalid or Google Down.");
+            return false;
+        }
         const data = await response.json();
         const validModel = data.models?.find((m: any) => 
             m.name.includes("gemini") && 
@@ -30,9 +41,13 @@ export class GeminiLiveService {
         );
         if (validModel) {
             this.modelUrl = `https://generativelanguage.googleapis.com/v1beta/${validModel.name}:generateContent?key=${API_KEY}`;
+            this.onStatusUpdate("Connected to Brain.");
             return true;
         }
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+        this.onStatusUpdate("ERROR: Network Connection Failed.");
+        console.error(e); 
+    }
     return false;
   }
 
@@ -40,15 +55,21 @@ export class GeminiLiveService {
     this.isListening = true;
     this.isAgentSpeaking = false;
 
-    await this.findWorkingModel();
+    // 1. WAKE UP AUDIO
+    this.synth.cancel();
+    const utterance = new SpeechSynthesisUtterance(" ");
+    this.synth.speak(utterance);
 
-    // RESET MEMORY
+    const connected = await this.findWorkingModel();
+    if (!connected) return;
+
+    // 2. RESET MEMORY
     this.history = [
         { role: "user", parts: [{ text: activeConfig.systemPrompt }] },
         { role: "model", parts: [{ text: activeConfig.firstMessage }] }
     ];
 
-    // SETUP MIC
+    // 3. SETUP MIC
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -57,14 +78,19 @@ export class GeminiLiveService {
       const source = audioContext.createMediaStreamSource(stream);
       source.connect(analyser);
       onAudioData(analyser);
-    } catch (e) { console.error("Mic Error", e); }
+    } catch (e) { 
+        this.onStatusUpdate("ERROR: Mic Blocked.");
+    }
 
-    // SETUP EARS
+    // 4. SETUP EARS
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
+    if (!SpeechRecognition) {
+        this.onStatusUpdate("ERROR: Browser not supported.");
+        return;
+    }
 
     this.recognition = new SpeechRecognition();
-    this.recognition.continuous = false; // Safe Mode
+    this.recognition.continuous = false; 
     this.recognition.interimResults = false;
     this.recognition.lang = 'en-US';
 
@@ -76,13 +102,15 @@ export class GeminiLiveService {
       
       if (!text || text.trim().length < 1) return;
 
-      console.log("User said:", text);
+      this.onStatusUpdate(`Heard: "${text}"`);
       this.stopMic(); 
 
       try {
+        this.onStatusUpdate("Thinking...");
         const responseText = await this.askGoogleWithHistory(text);
         if (responseText) this.speak(responseText);
       } catch (error) {
+        this.onStatusUpdate("ERROR: Brain failed to reply.");
         this.startMic();
       }
     };
@@ -93,9 +121,14 @@ export class GeminiLiveService {
         }
     };
 
+    this.recognition.onerror = (e: any) => {
+        if (e.error !== 'no-speech') {
+            this.onStatusUpdate(`Mic Error: ${e.error}`);
+        }
+    };
+
     this.startMic();
 
-    // SIMPLE GREETING
     setTimeout(() => {
         this.speak(activeConfig.firstMessage);
     }, 500);
@@ -105,7 +138,10 @@ export class GeminiLiveService {
 
   startMic() {
     if (!this.recognition || this.isAgentSpeaking) return;
-    try { this.recognition.start(); } catch (e) {}
+    try { 
+        this.recognition.start(); 
+        this.onStatusUpdate("Listening...");
+    } catch (e) {}
   }
 
   stopMic() {
@@ -133,16 +169,17 @@ export class GeminiLiveService {
   }
   
   speak(text: string) {
+    this.onStatusUpdate("Speaking...");
     this.isAgentSpeaking = true;
     this.stopMic(); 
     this.synth.cancel();
 
-    // VANILLA SPEAKER: No voice selection, just default
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 1.0; 
     
     utterance.onend = () => {
         this.isAgentSpeaking = false;
+        this.onStatusUpdate("Finished speaking. Listening...");
         setTimeout(() => {
             if (this.isListening) this.startMic();
         }, 200); 
@@ -154,6 +191,7 @@ export class GeminiLiveService {
   async stop() {
     this.isListening = false;
     this.isAgentSpeaking = false;
+    this.onStatusUpdate("Stopped.");
     if (this.recognition) this.recognition.stop();
     if (this.synth) this.synth.cancel();
   }
