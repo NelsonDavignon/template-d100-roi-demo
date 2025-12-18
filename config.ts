@@ -12,6 +12,7 @@ const BASE_INSTRUCTIONS = `
 4. ONE QUESTION AT A TIME. Never ask two things at once.
 5. If the user answers a question, ACKNOWLEDGE it before moving on.
 6. Always ask the best phone number and email to reach them before book them.
+7. If the prospect is qualified, give the prospect 2 time slot and ask them which one is best to get a call.
 `;
 
 export const NICHES = {
