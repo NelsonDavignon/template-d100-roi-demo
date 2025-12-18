@@ -10,6 +10,9 @@ export class GeminiLiveService {
   private recognition: any;
   private modelUrl: string = ""; 
   private voices: SpeechSynthesisVoice[] = [];
+  
+  // MEMORY STORAGE
+  private history: { role: string; parts: { text: string }[] }[] = [];
 
   constructor() {
     this.synth = window.speechSynthesis;
@@ -40,6 +43,18 @@ export class GeminiLiveService {
   async start(onAudioData: (analyser: AnalyserNode) => void) {
     await this.findWorkingModel();
 
+    // RESET MEMORY ON START
+    this.history = [
+        {
+            role: "user",
+            parts: [{ text: activeConfig.systemPrompt }] // The "God Rule" is always first
+        },
+        {
+            role: "model",
+            parts: [{ text: activeConfig.firstMessage }] // She knows she just said this
+        }
+    ];
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -64,7 +79,7 @@ export class GeminiLiveService {
       if (!text || text.trim().length < 2) return; 
 
       try {
-        const responseText = await this.askGoogleDirectly(text);
+        const responseText = await this.askGoogleWithHistory(text);
         if (responseText) this.speak(responseText);
       } catch (error) {}
     };
@@ -78,54 +93,55 @@ export class GeminiLiveService {
     return true; 
   }
 
-  async askGoogleDirectly(userText: string) {
+  // NEW FUNCTION: Sends the whole history, not just the last sentence
+  async askGoogleWithHistory(userText: string) {
     if (!this.modelUrl) return "I'm having trouble connecting.";
-    const systemPrompt = activeConfig.systemPrompt;
-    
+
+    // 1. Add User's new message to history
+    this.history.push({ role: "user", parts: [{ text: userText }] });
+
+    // 2. Send the WHOLE history to Google
     const response = await fetch(this.modelUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: systemPrompt + " User says: " + userText }] }]
+        contents: this.history
       })
     });
 
     const data = await response.json();
     if (data.candidates && data.candidates[0]) {
-        return data.candidates[0].content.parts[0].text;
+        const answer = data.candidates[0].content.parts[0].text;
+        
+        // 3. Add AI's answer to history (so she remembers she said it)
+        this.history.push({ role: "model", parts: [{ text: answer }] });
+        
+        return answer;
     }
     return "";
   }
   
-  // UPDATED: Now supports Gender Selection
   speak(text: string) {
     this.synth.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    
     if (this.voices.length > 0) {
-        // 1. Get the gender from config (default to female if missing)
         const targetGender = (activeConfig as any).voiceGender || 'female';
-        
         let bestVoice;
 
         if (targetGender === 'male') {
-            // TRY TO FIND A MALE VOICE
             bestVoice = 
                 this.voices.find(v => v.name.includes("Male") && v.name.includes("English")) ||
-                this.voices.find(v => v.name.includes("David")) || // Common Male ID
-                this.voices.find(v => v.name.includes("Mark"));    // Common Male ID
+                this.voices.find(v => v.name.includes("David")) || 
+                this.voices.find(v => v.name.includes("Mark"));
         } else {
-            // TRY TO FIND A FEMALE VOICE (Natural preferred)
             bestVoice = 
                 this.voices.find(v => v.name.includes("Natural") && v.name.includes("English") && !v.name.includes("Male")) || 
                 this.voices.find(v => v.name.includes("Google US English")) || 
                 this.voices.find(v => v.name.includes("Female"));
         }
-
         if (bestVoice) utterance.voice = bestVoice;
     }
-    
-    utterance.rate = 1.0; // Male voices sound better at normal speed
+    utterance.rate = 1.0; 
     this.synth.speak(utterance);
   }
 
