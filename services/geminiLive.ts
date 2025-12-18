@@ -86,8 +86,10 @@ export class GeminiLiveService {
         const result = await this.chat.sendMessage(text);
         const response = result.response.text();
         this.speak(response);
-      } catch (error) {
-        alert("Brain Error: API Key might be invalid.");
+      } catch (error: any) {
+        // THIS WILL SHOW THE REAL REASON
+        alert("REAL ERROR: " + error.toString()); 
+        console.error(error);
       }
     };
 
