@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 
 const API_KEY = 
   import.meta.env.VITE_GEMINI_API_KEY || 
@@ -20,18 +20,30 @@ export class GeminiLiveService {
     this.ai = new GoogleGenerativeAI(API_KEY);
     this.synth = window.speechSynthesis;
     
-    // FINAL FIX: Using 'gemini-pro' (The Universal Model)
-    const model = this.ai.getGenerativeModel({ model: "gemini-pro" });
+    // FIX 1: Disable Safety Filters (So she doesn't get blocked)
+    const safetySettings = [
+      { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+      { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+      { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+      { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+    ];
+
+    // FIX 2: Try 'gemini-1.5-flash' again (It is faster/better if it works)
+    // If this fails, we will see the error in the ALERT.
+    const model = this.ai.getGenerativeModel({ 
+      model: "gemini-1.5-flash",
+      safetySettings: safetySettings 
+    });
     
     this.chat = model.startChat({
       history: [
         {
           role: "user",
-          parts: [{ text: "You are Sarah, a home renovation coordinator. Be helpful and brief (1 sentence max). Start by saying: 'Hello! I am Sarah. How can I help with your project?'" }],
+          parts: [{ text: "You are Sarah. Be helpful and brief. Start by saying: 'Hello! Sarah is ready.'" }],
         },
         {
           role: "model",
-          parts: [{ text: "Hello! I am Sarah. How can I help with your project?" }],
+          parts: [{ text: "Hello! Sarah is ready." }],
         },
       ],
     });
@@ -63,13 +75,18 @@ export class GeminiLiveService {
       const text = event.results[last][0].transcript;
       console.log("Sarah Heard:", text);
 
+      if (!text) return;
+
       try {
         const result = await this.chat.sendMessage(text);
         const response = result.response.text();
         this.speak(response);
-      } catch (error) {
+      } catch (error: any) {
         console.error("Brain Error:", error);
-        this.speak("I am sorry, could you say that again?");
+        
+        // FIX 3: TELL US THE REAL REASON
+        alert("GOOGLE ERROR: " + error.toString());
+        this.speak("I am having a connection error.");
       }
     };
 
@@ -78,8 +95,7 @@ export class GeminiLiveService {
     };
 
     this.recognition.start();
-    // New Greeting to force update
-    this.speak("Hello! I am Sarah. How can I help with your project?");
+    this.speak("Hello! Sarah is ready.");
     return true; 
   }
   
