@@ -11,11 +11,10 @@ export class GeminiLiveService {
   private modelUrl: string = ""; 
   private voices: SpeechSynthesisVoice[] = [];
   private history: { role: string; parts: { text: string }[] }[] = [];
-  private isListening: boolean = false; // Flag to control the loop
+  private isListening: boolean = false; 
 
   constructor() {
     this.synth = window.speechSynthesis;
-    // Load voices immediately
     if (typeof window !== 'undefined') {
         const loadVoices = () => { this.voices = this.synth.getVoices(); };
         this.synth.onvoiceschanged = loadVoices;
@@ -23,7 +22,6 @@ export class GeminiLiveService {
     }
   }
 
-  // --- BRAIN CONNECTION ---
   async findWorkingModel() {
     try {
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`);
@@ -41,12 +39,10 @@ export class GeminiLiveService {
     return false;
   }
 
-  // --- START FUNCTION ---
   async start(onAudioData: (analyser: AnalyserNode) => void) {
     this.isListening = true;
 
-    // 1. MOBILE FIX: Play a silent sound to wake up the speakers
-    // We only do this lightly so we don't break Desktop
+    // 1. LIGHT IPHONE WAKE-UP
     const utterance = new SpeechSynthesisUtterance(" ");
     this.synth.speak(utterance);
 
@@ -58,7 +54,6 @@ export class GeminiLiveService {
         { role: "model", parts: [{ text: activeConfig.firstMessage }] }
     ];
 
-    // 3. SETUP MIC (Visualizer)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -67,18 +62,16 @@ export class GeminiLiveService {
       const source = audioContext.createMediaStreamSource(stream);
       source.connect(analyser);
       onAudioData(analyser);
-    } catch (e) { console.error("Mic access denied", e); }
+    } catch (e) { console.error("Mic Error", e); }
 
-    // 4. SETUP EARS (Recognition)
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) return;
 
     this.recognition = new SpeechRecognition();
     
-    // CRITICAL FIX FOR IPHONE:
-    // iPhone breaks if 'continuous' is true. We must use 'false' and manual restart.
+    // HYBRID MODE: Continuous on Desktop, Single-Shot on Mobile
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    this.recognition.continuous = !isMobile; // False on iPhone, True on Desktop
+    this.recognition.continuous = !isMobile; 
     this.recognition.interimResults = false;
     this.recognition.lang = 'en-US';
 
@@ -89,7 +82,7 @@ export class GeminiLiveService {
 
       console.log("Heard:", text);
       
-      // Stop listening while thinking to prevent hearing herself
+      // Stop listening on mobile while processing to avoid bugs
       if (isMobile) this.recognition.stop(); 
 
       try {
@@ -98,7 +91,7 @@ export class GeminiLiveService {
       } catch (error) {}
     };
 
-    // THE RESTART LOOP (Keeps it alive)
+    // RESTART LOOP
     this.recognition.onend = () => {
         if (this.isListening && !this.synth.speaking) {
             try { this.recognition.start(); } catch (e) {} 
@@ -107,7 +100,6 @@ export class GeminiLiveService {
 
     try { this.recognition.start(); } catch (e) {}
 
-    // Greet the user
     setTimeout(() => {
         this.speak(activeConfig.firstMessage);
     }, 100);
@@ -135,10 +127,9 @@ export class GeminiLiveService {
   }
   
   speak(text: string) {
-    this.synth.cancel(); // Stop any previous speech
+    this.synth.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     
-    // BETTER VOICE SELECTION
     if (this.voices.length > 0) {
         const targetGender = (activeConfig as any).voiceGender || 'female';
         let bestVoice;
@@ -146,5 +137,31 @@ export class GeminiLiveService {
         if (targetGender === 'male') {
             bestVoice = 
                 this.voices.find(v => v.name.includes("Male") && v.name.includes("English")) ||
-                this.voices.find(v => v.name.includes("Daniel")) || // Good iPhone Male
-                this.voices.find(v => v.name.includes
+                this.voices.find(v => v.name.includes("Daniel")) || 
+                this.voices.find(v => v.name.includes("David"));   
+        } else {
+            bestVoice = 
+                this.voices.find(v => v.name.includes("Samantha")) || 
+                this.voices.find(v => v.name.includes("Google US English")) || 
+                this.voices.find(v => v.name.includes("Natural") && !v.name.includes("Male"));
+        }
+        if (bestVoice) utterance.voice = bestVoice;
+    }
+    
+    utterance.rate = 1.0; 
+    
+    utterance.onend = () => {
+        if (this.isListening) {
+            try { this.recognition.start(); } catch (e) {}
+        }
+    };
+
+    this.synth.speak(utterance);
+  }
+
+  async stop() {
+    this.isListening = false;
+    if (this.recognition) this.recognition.stop();
+    if (this.synth) this.synth.cancel();
+  }
+}
