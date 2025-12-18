@@ -11,7 +11,10 @@ export class GeminiLiveService {
   private modelUrl: string = ""; 
   private voices: SpeechSynthesisVoice[] = [];
   private history: { role: string; parts: { text: string }[] }[] = [];
+  
+  // STATE FLAGS
   private isListening: boolean = false; 
+  private isAgentSpeaking: boolean = false;
 
   constructor() {
     this.synth = window.speechSynthesis;
@@ -42,9 +45,11 @@ export class GeminiLiveService {
   async start(onAudioData: (analyser: AnalyserNode) => void) {
     this.isListening = true;
 
-    // 1. LIGHT IPHONE WAKE-UP
+    // 1. MOBILE UNLOCK (Silent)
+    // We cancel immediately to just "wake" the audio driver
     const utterance = new SpeechSynthesisUtterance(" ");
     this.synth.speak(utterance);
+    this.synth.cancel();
 
     await this.findWorkingModel();
 
@@ -54,6 +59,7 @@ export class GeminiLiveService {
         { role: "model", parts: [{ text: activeConfig.firstMessage }] }
     ];
 
+    // 3. SETUP MIC
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -64,51 +70,75 @@ export class GeminiLiveService {
       onAudioData(analyser);
     } catch (e) { console.error("Mic Error", e); }
 
+    // 4. SETUP EARS
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) return;
 
     this.recognition = new SpeechRecognition();
     
-    // HYBRID MODE: Continuous on Desktop, Single-Shot on Mobile
+    // DETECT DEVICE
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    
+    // IMPORTANT: On Mobile, we do NOT use continuous. We restart manually.
     this.recognition.continuous = !isMobile; 
     this.recognition.interimResults = false;
     this.recognition.lang = 'en-US';
 
     this.recognition.onresult = async (event: any) => {
+      // IF AGENT IS SPEAKING, IGNORE INPUT (Fixes "Gotcha" loop)
+      if (this.isAgentSpeaking) return;
+
       const last = event.results.length - 1;
       const text = event.results[last][0].transcript;
-      if (!text || text.trim().length < 1) return; 
-
-      console.log("Heard:", text);
       
-      // Stop listening on mobile while processing to avoid bugs
-      if (isMobile) this.recognition.stop(); 
+      if (!text || text.trim().length < 2) return; // Ignore noises
+
+      console.log("User said:", text);
+      
+      // Stop mic while thinking
+      this.stopMic(); 
 
       try {
         const responseText = await this.askGoogleWithHistory(text);
         if (responseText) this.speak(responseText);
-      } catch (error) {}
+      } catch (error) {
+        // If error, restart mic so user can try again
+        this.startMic();
+      }
     };
 
-    // RESTART LOOP
+    // KEEP ALIVE LOOP
     this.recognition.onend = () => {
-        if (this.isListening && !this.synth.speaking) {
+        // Only restart if we are supposed to be listening AND agent is NOT talking
+        if (this.isListening && !this.isAgentSpeaking) {
             try { this.recognition.start(); } catch (e) {} 
         }
     };
 
-    try { this.recognition.start(); } catch (e) {}
+    // START LISTENING
+    this.startMic();
 
+    // SAY HELLO (With a slight delay to ensure audio is ready)
     setTimeout(() => {
         this.speak(activeConfig.firstMessage);
-    }, 100);
+    }, 800);
     
     return true; 
   }
 
+  // --- HELPER: MIC CONTROL ---
+  startMic() {
+    if (!this.recognition || this.isAgentSpeaking) return;
+    try { this.recognition.start(); } catch (e) {}
+  }
+
+  stopMic() {
+    if (!this.recognition) return;
+    try { this.recognition.stop(); } catch (e) {}
+  }
+
   async askGoogleWithHistory(userText: string) {
-    if (!this.modelUrl) return "Connection lost.";
+    if (!this.modelUrl) return "I lost connection.";
     this.history.push({ role: "user", parts: [{ text: userText }] });
 
     const response = await fetch(this.modelUrl, {
@@ -127,9 +157,14 @@ export class GeminiLiveService {
   }
   
   speak(text: string) {
+    // 1. SILENCE THE MIC (Crucial step)
+    this.isAgentSpeaking = true;
+    this.stopMic();
     this.synth.cancel();
+
     const utterance = new SpeechSynthesisUtterance(text);
     
+    // VOICE SELECTION
     if (this.voices.length > 0) {
         const targetGender = (activeConfig as any).voiceGender || 'female';
         let bestVoice;
@@ -150,10 +185,16 @@ export class GeminiLiveService {
     
     utterance.rate = 1.0; 
     
+    // 2. WHEN FINISHED SPEAKING
     utterance.onend = () => {
-        if (this.isListening) {
-            try { this.recognition.start(); } catch (e) {}
-        }
+        this.isAgentSpeaking = false;
+        
+        // 3. WAIT 0.5s BEFORE LISTENING (Prevents Echo/"Gotcha")
+        setTimeout(() => {
+            if (this.isListening) {
+                this.startMic();
+            }
+        }, 500); 
     };
 
     this.synth.speak(utterance);
@@ -161,6 +202,7 @@ export class GeminiLiveService {
 
   async stop() {
     this.isListening = false;
+    this.isAgentSpeaking = false;
     if (this.recognition) this.recognition.stop();
     if (this.synth) this.synth.cancel();
   }
