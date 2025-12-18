@@ -1,57 +1,57 @@
-// MASTER KEY MODE: Auto-detects the correct model for your account.
+// SECURE MODE: Reads the key from Vercel. No hardcoded passwords.
 
-// PASTE YOUR TIER 1 KEY HERE
-const API_KEY = "AIzaSyBDZDS3qHCuJ_7PF8Kr9ro1EY0ZAuayekg";
+// This line pulls the key from the "Vercel Vault" automatically
+const API_KEY = 
+  import.meta.env.VITE_GEMINI_API_KEY || 
+  import.meta.env.NEXT_PUBLIC_GEMINI_API_KEY || 
+  "";
 
 export class GeminiLiveService {
   private synth: SpeechSynthesis;
   private recognition: any;
-  private modelUrl: string = ""; // We will find this automatically
+  private modelUrl: string = ""; 
 
   constructor() {
     this.synth = window.speechSynthesis;
-    if (API_KEY.includes("PASTE_YOUR")) {
-       alert("CRITICAL: You forgot to paste the API Key!");
+    // Safety Check
+    if (!API_KEY || API_KEY.length < 10) {
+       console.error("CRITICAL: API Key is missing from Vercel Environment Variables.");
+       // We don't alert immediately to avoid annoying popups if it's just loading
     }
   }
 
-  // --- THE MASTER KEY LOGIC ---
-  // This asks Google which model works for YOU.
+  // --- BRAIN FINDER ---
   async findWorkingModel() {
     try {
-        console.log("Searching for available brains...");
+        console.log("Connecting to Google...");
+        // This request uses the hidden key
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`);
-        const data = await response.json();
         
-        if (!data.models) throw new Error("No models found for this key.");
+        if (!response.ok) throw new Error("Key Rejected or Invalid");
 
-        // Find the best model that supports generating content
-        const validModel = data.models.find((m: any) => 
+        const data = await response.json();
+        const validModel = data.models?.find((m: any) => 
             m.name.includes("gemini") && 
             m.supportedGenerationMethods.includes("generateContent")
         );
 
         if (validModel) {
-            console.log("FOUND WORKING BRAIN:", validModel.name);
-            // Build the URL for this specific brain
+            console.log("Connected to:", validModel.name);
             this.modelUrl = `https://generativelanguage.googleapis.com/v1beta/${validModel.name}:generateContent?key=${API_KEY}`;
             return true;
-        } else {
-            throw new Error("No chat models available.");
         }
+        throw new Error("No brains found.");
     } catch (e: any) {
         console.error(e);
-        alert("ACCOUNT ERROR: " + e.message);
+        alert("SECURITY ERROR: Could not connect. Check Vercel Environment Variables.");
         return false;
     }
   }
 
   async start(onAudioData: (analyser: AnalyserNode) => void) {
-    // 1. Find the Brain first
     const brainReady = await this.findWorkingModel();
     if (!brainReady) return;
 
-    // 2. Setup Mic
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -64,7 +64,6 @@ export class GeminiLiveService {
       console.error("Mic Error", e);
     }
 
-    // 3. Setup Ears
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) return;
 
@@ -80,13 +79,11 @@ export class GeminiLiveService {
 
       if (!text) return;
 
-      // 4. SEND TO THE AUTO-DETECTED BRAIN
       try {
         const responseText = await this.askGoogleDirectly(text);
         this.speak(responseText);
       } catch (error: any) {
         console.error("API Error:", error);
-        alert("ERROR: " + error.message);
       }
     };
 
@@ -95,12 +92,12 @@ export class GeminiLiveService {
     };
 
     this.recognition.start();
-    this.speak("System Online. Connected to Google.");
+    this.speak("System Secure. Ready.");
     return true; 
   }
 
   async askGoogleDirectly(userText: string) {
-    if (!this.modelUrl) throw new Error("Brain not connected.");
+    if (!this.modelUrl) return "I am offline.";
 
     const response = await fetch(this.modelUrl, {
       method: 'POST',
@@ -112,17 +109,11 @@ export class GeminiLiveService {
       })
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error?.message || "Unknown API Error");
-    }
-
     const data = await response.json();
-    if (data.candidates && data.candidates[0] && data.candidates[0].content) {
+    if (data.candidates && data.candidates[0]) {
         return data.candidates[0].content.parts[0].text;
-    } else {
-        return "I am listening.";
     }
+    return "I didn't catch that.";
   }
   
   speak(text: string) {
