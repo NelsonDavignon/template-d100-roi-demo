@@ -12,17 +12,15 @@ export class GeminiLiveService {
   private voices: SpeechSynthesisVoice[] = [];
   private history: { role: string; parts: { text: string }[] }[] = [];
   
+  // STATE FLAGS
   private isListening: boolean = false; 
   private isAgentSpeaking: boolean = false;
-  private isMobile: boolean = false;
 
   constructor() {
     this.synth = window.speechSynthesis;
     
-    // DETECT MOBILE ON LOAD
+    // Load voices immediately
     if (typeof window !== 'undefined') {
-        this.isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-        
         const loadVoices = () => { 
             this.voices = this.synth.getVoices(); 
         };
@@ -51,6 +49,7 @@ export class GeminiLiveService {
 
   async start(onAudioData: (analyser: AnalyserNode) => void) {
     this.isListening = true;
+    this.isAgentSpeaking = false;
 
     // 1. WAKE UP AUDIO (Safe for both)
     const utterance = new SpeechSynthesisUtterance(" ");
@@ -82,25 +81,16 @@ export class GeminiLiveService {
 
     this.recognition = new SpeechRecognition();
     
-    // --- THE SPLIT BRAIN LOGIC ---
-    if (this.isMobile) {
-        // IPHONE: Single Shot Mode (Must stop/start or it crashes)
-        this.recognition.continuous = false;
-    } else {
-        // MAC/PC: Continuous Mode (Must NEVER stop or it breaks)
-        this.recognition.continuous = true;
-    }
-    
+    // UNIVERSAL: ALWAYS FALSE
+    // We treat the Mac exactly like the iPhone. 
+    // It listens for ONE phrase, then stops. This prevents the "Hang" bug.
+    this.recognition.continuous = false; 
     this.recognition.interimResults = false;
     this.recognition.lang = 'en-US';
 
     this.recognition.onresult = async (event: any) => {
-      // LOGIC GATE: If Sarah is talking, ignore the user
-      // On Mac, the mic is still open, but we just throw the text in the trash here.
-      if (this.isAgentSpeaking) {
-          console.log("Ignored input while agent speaking");
-          return;
-      }
+      // Safety Check: If agent is talking, ignore the mic
+      if (this.isAgentSpeaking) return;
 
       const last = event.results.length - 1;
       const text = event.results[last][0].transcript;
@@ -109,34 +99,28 @@ export class GeminiLiveService {
 
       console.log("User said:", text);
       
-      // IPHONE ONLY: Stop mic to think.
-      // MAC: Keep mic open (do nothing).
-      if (this.isMobile) this.stopMic(); 
+      // Stop mic immediately to process (Universal)
+      this.stopMic(); 
 
       try {
         const responseText = await this.askGoogleWithHistory(text);
         if (responseText) this.speak(responseText);
       } catch (error) {
-        if (this.isMobile) this.startMic();
+        // If error, restart listening
+        this.startMic();
       }
     };
 
-    // RESTART LOGIC
+    // RESTART LOOP (Universal)
     this.recognition.onend = () => {
-        // If we are supposed to be listening...
-        if (this.isListening) {
-            // On iPhone: Restart always (because it stopped to think)
-            // On Mac: Restart only if it crashed (because it should be continuous)
-            if (this.isMobile && !this.isAgentSpeaking) {
-                 try { this.recognition.start(); } catch (e) {} 
-            } else if (!this.isMobile) {
-                 // Mac crash recovery
-                 try { this.recognition.start(); } catch (e) {}
-            }
+        // If we are supposed to be listening AND the Agent is NOT talking...
+        if (this.isListening && !this.isAgentSpeaking) {
+            // Restart the engine
+            try { this.recognition.start(); } catch (e) {} 
         }
     };
 
-    // START
+    // KICKSTART
     this.startMic();
 
     setTimeout(() => {
@@ -147,7 +131,7 @@ export class GeminiLiveService {
   }
 
   startMic() {
-    if (!this.recognition) return;
+    if (!this.recognition || this.isAgentSpeaking) return;
     try { this.recognition.start(); } catch (e) {}
   }
 
@@ -177,15 +161,12 @@ export class GeminiLiveService {
   
   speak(text: string) {
     this.isAgentSpeaking = true;
-    
-    // IPHONE ONLY: Kill the ears so no echo
-    // MAC: Leave ears open, but software will ignore input (see onresult)
-    if (this.isMobile) this.stopMic(); 
-    
+    this.stopMic(); // Hard stop ears on ALL devices
     this.synth.cancel();
 
     const utterance = new SpeechSynthesisUtterance(text);
     
+    // VOICE SELECTION
     if (this.voices.length > 0) {
         const targetGender = (activeConfig as any).voiceGender || 'female';
         let bestVoice;
@@ -211,16 +192,14 @@ export class GeminiLiveService {
         if (bestVoice) utterance.voice = bestVoice;
     }
     
-    // Slower is less robotic
-    utterance.rate = 0.9; 
+    utterance.rate = 1.0; 
     
     utterance.onend = () => {
         this.isAgentSpeaking = false;
-        
-        // IPHONE ONLY: Turn ears back on
-        if (this.isMobile && this.isListening) {
-            setTimeout(() => { this.startMic(); }, 200);
-        }
+        // Wait 0.5s for echo to fade, then listen
+        setTimeout(() => {
+            if (this.isListening) this.startMic();
+        }, 500); 
     };
 
     this.synth.speak(utterance);
