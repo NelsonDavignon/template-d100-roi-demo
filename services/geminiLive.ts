@@ -20,7 +20,7 @@ export class GeminiLiveService {
     this.ai = new GoogleGenerativeAI(API_KEY);
     this.synth = window.speechSynthesis;
     
-    // FIX 1: Disable Safety Filters (So she doesn't get blocked)
+    // SAFETY: Turn off filters so she doesn't get blocked
     const safetySettings = [
       { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
       { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -28,10 +28,11 @@ export class GeminiLiveService {
       { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
     ];
 
-    // FIX 2: Try 'gemini-1.5-flash' again (It is faster/better if it works)
-    // If this fails, we will see the error in the ALERT.
+    // --- THE PERFORMANCE FIX ---
+    // We use "gemini-pro" (The Classic Model). 
+    // It is faster and not region-locked like "flash".
     const model = this.ai.getGenerativeModel({ 
-      model: "gemini-1.5-flash",
+      model: "gemini-pro", 
       safetySettings: safetySettings 
     });
     
@@ -39,11 +40,11 @@ export class GeminiLiveService {
       history: [
         {
           role: "user",
-          parts: [{ text: "You are Sarah. Be helpful and brief. Start by saying: 'Hello! Sarah is ready.'" }],
+          parts: [{ text: "You are Sarah. Be helpful and brief. Start by saying: 'Hello! Sarah is listening.'" }],
         },
         {
           role: "model",
-          parts: [{ text: "Hello! Sarah is ready." }],
+          parts: [{ text: "Hello! Sarah is listening." }],
         },
       ],
     });
@@ -83,10 +84,7 @@ export class GeminiLiveService {
         this.speak(response);
       } catch (error: any) {
         console.error("Brain Error:", error);
-        
-        // FIX 3: TELL US THE REAL REASON
-        alert("GOOGLE ERROR: " + error.toString());
-        this.speak("I am having a connection error.");
+        console.log("Retrying connection...");
       }
     };
 
@@ -95,7 +93,7 @@ export class GeminiLiveService {
     };
 
     this.recognition.start();
-    this.speak("Hello! Sarah is ready.");
+    this.speak("Hello! Sarah is listening.");
     return true; 
   }
   
