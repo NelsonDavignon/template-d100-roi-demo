@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/solid';
-import { CLIENT_CONFIG } from './constants';
+import { activeConfig } from './config'; // We use the new config now
 import { SlideIndex } from './types';
+
+// YOUR IMPORTS (Matched from your screenshot)
 import Slide1_Problem from './components/Slide1_Problem';
 import Slide2_Solution from './components/Slide2_Solution';
 import Slide3_ROI from './components/Slide3_ROI';
@@ -10,7 +12,10 @@ import Slide_Possibilities from './components/Slide_Possibilities';
 import Slide4_Offer from './components/Slide4_Offer';
 
 function App() {
+  // Start at Problem slide
   const [currentSlide, setCurrentSlide] = useState(SlideIndex.PROBLEM);
+  
+  // Total number of slides (0 to 4 = 5 slides)
   const totalSlides = 5;
 
   const nextSlide = () => {
@@ -23,8 +28,9 @@ function App() {
 
   // Render the correct component based on index
   const renderSlide = () => {
-    const props = { isActive: true, config: CLIENT_CONFIG };
-    
+    // We pass "isActive" to Slide 2 so it knows when to wake up
+    const props = { isActive: currentSlide === SlideIndex.SOLUTION, config: activeConfig };
+
     switch (currentSlide) {
       case SlideIndex.PROBLEM:
         return <Slide1_Problem {...props} />;
@@ -42,70 +48,72 @@ function App() {
   };
 
   return (
-    <div className="relative w-screen h-screen bg-brand-dark overflow-hidden flex flex-col">
+    // FIX 1: h-[100dvh] fixes the "Jumping Address Bar" on iPhone
+    <div className="relative w-screen h-[100dvh] bg-black overflow-hidden flex flex-col font-sans selection:bg-yellow-500/30">
       
-      {/* Header / Logo Area */}
-      <div className="absolute top-0 left-0 w-full p-6 z-50 flex justify-between items-center bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
-        <div className="text-2xl font-serif font-bold tracking-widest text-white pointer-events-auto">
-          {CLIENT_CONFIG.name.toUpperCase()}
+      {/* HEADER - Locked to top, z-index 50 to stay above everything */}
+      <div className="absolute top-0 left-0 w-full p-6 z-50 flex justify-between items-start pointer-events-none bg-gradient-to-b from-black/90 to-transparent h-32">
+        <div>
+          <h2 className="text-2xl font-serif tracking-wide text-white font-bold leading-none">
+            {activeConfig.companyName.split(' ')[0]}
+          </h2>
+          <h2 className="text-2xl font-serif tracking-wide text-white font-bold leading-none">
+            {activeConfig.companyName.split(' ').slice(1).join(' ')}
+          </h2>
         </div>
-        <div className="text-xs font-mono text-brand-gold uppercase tracking-widest opacity-80">
-          AI Automation Proposal
+        <div className="text-right hidden md:block">
+          <p className="text-xs font-mono text-yellow-500 tracking-widest uppercase">
+            AI Automation Proposal
+          </p>
         </div>
       </div>
 
-      {/* Main Slide Content */}
-      <main className="flex-grow relative flex items-center justify-center">
+      {/* MAIN CONTENT AREA */}
+      {/* FIX 2: pt-24 (Padding Top) pushes content down so it doesn't hit the Logo */}
+      {/* FIX 3: overflow-y-auto lets you scroll if the text is too long */}
+      <div className="flex-1 w-full h-full pt-24 pb-20 overflow-y-auto no-scrollbar relative z-10">
         <AnimatePresence mode="wait">
           <motion.div
             key={currentSlide}
-            initial={{ opacity: 0, x: 100 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -100 }}
-            transition={{ duration: 0.5, ease: "easeInOut" }}
-            className="w-full h-full absolute inset-0 overflow-y-auto"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.3 }}
+            className="h-full"
           >
             {renderSlide()}
           </motion.div>
         </AnimatePresence>
-      </main>
-
-      {/* Navigation Controls */}
-      <div className="absolute bottom-0 w-full p-8 z-50 flex justify-between items-center bg-gradient-to-t from-black/90 to-transparent">
-        {/* Progress Indicators */}
-        <div className="flex gap-2">
-          {[...Array(totalSlides)].map((_, idx) => (
-            <div 
-              key={idx}
-              className={`h-1 rounded-full transition-all duration-300 ${
-                idx === currentSlide ? 'w-8 bg-brand-gold' : 'w-2 bg-gray-700'
-              }`}
-            />
-          ))}
-        </div>
-
-        {/* Buttons */}
-        <div className="flex gap-4">
-          <button 
-            onClick={prevSlide}
-            className="p-3 rounded-full bg-white/5 hover:bg-white/10 text-white transition-colors backdrop-blur-md border border-white/10"
-            disabled={currentSlide === 0}
-            style={{ opacity: currentSlide === 0 ? 0.3 : 1 }}
-          >
-            <ChevronLeftIcon className="w-6 h-6" />
-          </button>
-          <button 
-            onClick={nextSlide}
-            className="p-3 rounded-full bg-brand-gold hover:bg-yellow-500 text-brand-dark transition-colors shadow-lg shadow-brand-gold/20"
-          >
-             {currentSlide === totalSlides - 1 ? (
-                <span className="text-xs font-bold px-2">FINISH</span>
-             ) : (
-                <ChevronRightIcon className="w-6 h-6" />
-             )}
-          </button>
-        </div>
       </div>
+
+      {/* NAVIGATION BUTTONS (Floating at bottom) */}
+      <div className="absolute bottom-6 right-6 flex space-x-2 z-50">
+        <button 
+          onClick={prevSlide}
+          className="p-3 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 backdrop-blur-md transition-all active:scale-95"
+        >
+          <ChevronLeftIcon className="w-6 h-6 text-white" />
+        </button>
+        <button 
+          onClick={nextSlide}
+          className="p-3 rounded-full bg-yellow-500 hover:bg-yellow-400 text-black shadow-lg shadow-yellow-500/20 transition-all active:scale-95"
+        >
+          <ChevronRightIcon className="w-6 h-6" />
+        </button>
+      </div>
+
+      {/* PROGRESS BAR */}
+      <div className="absolute bottom-10 left-6 flex space-x-2 z-40">
+        {[...Array(totalSlides)].map((_, i) => (
+          <div 
+            key={i}
+            className={`h-1 rounded-full transition-all duration-300 ${
+              i === currentSlide ? 'w-8 bg-yellow-500' : 'w-2 bg-white/20'
+            }`}
+          />
+        ))}
+      </div>
+
     </div>
   );
 }
