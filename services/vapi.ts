@@ -2,7 +2,7 @@ import Vapi from "@vapi-ai/web";
 import { activeConfig } from "../config";
 
 // --- PASTE YOUR VAPI PUBLIC KEY HERE ---
-const VAPI_PUBLIC_KEY = "YOUR_PUBLIC_KEY_HERE"; 
+const VAPI_PUBLIC_KEY = "46e40019-b940-4d18-bc5b-98c74796398f"; 
 
 export class VapiService {
   private vapi: any;
