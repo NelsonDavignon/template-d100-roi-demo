@@ -67,8 +67,8 @@ function App() {
 
       {/* MAIN CONTENT AREA */}
       {/* FIX 2: pt-36 (Massive Top Padding) - Pushes content below the logo */}
-      {/* FIX 3: pb-40 (Massive Bottom Padding) - Allows Calendly to scroll up past buttons */}
-      <div className="flex-1 w-full h-full pt-36 pb-40 overflow-y-auto overflow-x-hidden relative z-10 scroll-smooth" style={{ WebkitOverflowScrolling: 'touch' }}>
+      {/* FIX 3: pb-36 (Massive Bottom Padding) - Allows Calendly to scroll up past buttons */}
+      <div className="flex-1 w-full h-full pt-36 pb-36 overflow-y-auto overflow-x-hidden relative z-10 scroll-smooth" style={{ WebkitOverflowScrolling: 'touch' }}>
         <AnimatePresence mode="wait">
           <motion.div
             key={currentSlide}
