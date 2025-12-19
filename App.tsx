@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/solid';
-import { activeConfig } from './config'; // We use the new config now
-import { SlideIndex } from './types';
 
-// YOUR IMPORTS (Matched from your screenshot)
+// YOUR IMPORTS (Restored from your screenshot)
+import { CLIENT_CONFIG } from './constants';
+import { SlideIndex } from './types';
 import Slide1_Problem from './components/Slide1_Problem';
 import Slide2_Solution from './components/Slide2_Solution';
 import Slide3_ROI from './components/Slide3_ROI';
@@ -12,10 +12,7 @@ import Slide_Possibilities from './components/Slide_Possibilities';
 import Slide4_Offer from './components/Slide4_Offer';
 
 function App() {
-  // Start at Problem slide
   const [currentSlide, setCurrentSlide] = useState(SlideIndex.PROBLEM);
-  
-  // Total number of slides (0 to 4 = 5 slides)
   const totalSlides = 5;
 
   const nextSlide = () => {
@@ -26,10 +23,8 @@ function App() {
     setCurrentSlide((prev) => (prev - 1 + totalSlides) % totalSlides);
   };
 
-  // Render the correct component based on index
   const renderSlide = () => {
-    // We pass "isActive" to Slide 2 so it knows when to wake up
-    const props = { isActive: currentSlide === SlideIndex.SOLUTION, config: activeConfig };
+    const props = { isActive: currentSlide === SlideIndex.SOLUTION, config: CLIENT_CONFIG };
 
     switch (currentSlide) {
       case SlideIndex.PROBLEM:
@@ -49,16 +44,20 @@ function App() {
 
   return (
     // FIX 1: h-[100dvh] fixes the "Jumping Address Bar" on iPhone
+    // FIX 2: overflow-hidden stops the page from bouncing
     <div className="relative w-screen h-[100dvh] bg-black overflow-hidden flex flex-col font-sans selection:bg-yellow-500/30">
       
-      {/* HEADER - Locked to top, z-index 50 to stay above everything */}
+      {/* HEADER - Locked to top */}
       <div className="absolute top-0 left-0 w-full p-6 z-50 flex justify-between items-start pointer-events-none bg-gradient-to-b from-black/90 to-transparent h-32">
         <div>
+          {/* Using CLIENT_CONFIG because that is what your file has */}
           <h2 className="text-2xl font-serif tracking-wide text-white font-bold leading-none">
-            {activeConfig.companyName.split(' ')[0]}
+            {CLIENT_CONFIG.companyName ? CLIENT_CONFIG.companyName.split(' ')[0] : 'NDO'}
           </h2>
           <h2 className="text-2xl font-serif tracking-wide text-white font-bold leading-none">
-            {activeConfig.companyName.split(' ').slice(1).join(' ')}
+             {CLIENT_CONFIG.companyName && CLIENT_CONFIG.companyName.split(' ').length > 1 
+                ? CLIENT_CONFIG.companyName.split(' ').slice(1).join(' ') 
+                : 'VENTURES'}
           </h2>
         </div>
         <div className="text-right hidden md:block">
@@ -69,8 +68,8 @@ function App() {
       </div>
 
       {/* MAIN CONTENT AREA */}
-      {/* FIX 2: pt-24 (Padding Top) pushes content down so it doesn't hit the Logo */}
-      {/* FIX 3: overflow-y-auto lets you scroll if the text is too long */}
+      {/* FIX 3: pt-24 pushes content down so it doesn't overlap the logo */}
+      {/* FIX 4: overflow-y-auto enables scrolling for tall content */}
       <div className="flex-1 w-full h-full pt-24 pb-20 overflow-y-auto no-scrollbar relative z-10">
         <AnimatePresence mode="wait">
           <motion.div
