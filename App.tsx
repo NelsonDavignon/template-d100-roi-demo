@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/solid';
 
-// YOUR IMPORTS (Restored from your screenshot)
+// YOUR IMPORTS
 import { CLIENT_CONFIG } from './constants';
 import { SlideIndex } from './types';
 import Slide1_Problem from './components/Slide1_Problem';
@@ -43,14 +43,12 @@ function App() {
   };
 
   return (
-    // FIX 1: h-[100dvh] fixes the "Jumping Address Bar" on iPhone
-    // FIX 2: overflow-hidden stops the page from bouncing
+    // FIX 1: h-[100dvh] ensures full height on iOS without the address bar jump
     <div className="relative w-screen h-[100dvh] bg-black overflow-hidden flex flex-col font-sans selection:bg-yellow-500/30">
       
       {/* HEADER - Locked to top */}
-      <div className="absolute top-0 left-0 w-full p-6 z-50 flex justify-between items-start pointer-events-none bg-gradient-to-b from-black/90 to-transparent h-32">
+      <div className="absolute top-0 left-0 w-full p-6 z-50 flex justify-between items-start pointer-events-none bg-gradient-to-b from-black/95 to-transparent h-40">
         <div>
-          {/* Using CLIENT_CONFIG because that is what your file has */}
           <h2 className="text-2xl font-serif tracking-wide text-white font-bold leading-none">
             {CLIENT_CONFIG.companyName ? CLIENT_CONFIG.companyName.split(' ')[0] : 'NDO'}
           </h2>
@@ -68,9 +66,9 @@ function App() {
       </div>
 
       {/* MAIN CONTENT AREA */}
-      {/* FIX 3: pt-24 pushes content down so it doesn't overlap the logo */}
-      {/* FIX 4: overflow-y-auto enables scrolling for tall content */}
-      <div className="flex-1 w-full h-full pt-24 pb-20 overflow-y-auto no-scrollbar relative z-10">
+      {/* FIX 2: pt-36 (Massive Top Padding) - Pushes content below the logo */}
+      {/* FIX 3: pb-40 (Massive Bottom Padding) - Allows Calendly to scroll up past buttons */}
+      <div className="flex-1 w-full h-full pt-36 pb-40 overflow-y-auto overflow-x-hidden relative z-10 scroll-smooth" style={{ WebkitOverflowScrolling: 'touch' }}>
         <AnimatePresence mode="wait">
           <motion.div
             key={currentSlide}
@@ -78,7 +76,7 @@ function App() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.3 }}
-            className="h-full"
+            className="min-h-full"
           >
             {renderSlide()}
           </motion.div>
@@ -89,13 +87,13 @@ function App() {
       <div className="absolute bottom-6 right-6 flex space-x-2 z-50">
         <button 
           onClick={prevSlide}
-          className="p-3 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 backdrop-blur-md transition-all active:scale-95"
+          className="p-4 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 backdrop-blur-md transition-all active:scale-95"
         >
           <ChevronLeftIcon className="w-6 h-6 text-white" />
         </button>
         <button 
           onClick={nextSlide}
-          className="p-3 rounded-full bg-yellow-500 hover:bg-yellow-400 text-black shadow-lg shadow-yellow-500/20 transition-all active:scale-95"
+          className="p-4 rounded-full bg-yellow-500 hover:bg-yellow-400 text-black shadow-lg shadow-yellow-500/20 transition-all active:scale-95"
         >
           <ChevronRightIcon className="w-6 h-6" />
         </button>
